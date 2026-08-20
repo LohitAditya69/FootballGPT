@@ -42,6 +42,7 @@ import csv
 import hashlib
 import json
 import sys
+from contextlib import ExitStack
 from collections import Counter
 from dataclasses import dataclass, asdict
 from pathlib import Path
@@ -123,6 +124,11 @@ def save_csv(path: Path, rows: Sequence[Dict[str, Any]]) -> None:
             writer.writerow({key: json.dumps(value, ensure_ascii=True) if isinstance(value, (dict, list)) else value for key, value in row.items()})
 
 
+def write_jsonl_record(handle, payload: Dict[str, Any]) -> None:
+    handle.write(json.dumps(payload, ensure_ascii=True) + "\n")
+    handle.flush()
+
+
 def read_json_file(path: Path) -> Any:
     with path.open("r", encoding="utf-8") as f:
         return json.load(f)
@@ -138,6 +144,21 @@ def read_json_file_safe(path: Path) -> Any:
 def stable_hash_ratio(text: str) -> float:
     digest = hashlib.md5(text.encode("utf-8"), usedforsecurity=False).hexdigest()
     return int(digest[:8], 16) / 0xFFFFFFFF
+
+
+def format_progress(current: int, total: int, label: str) -> str:
+    if total <= 0:
+        return f"{label}: {current}"
+    percent = (current / total) * 100
+    bar_width = 24
+    filled = int(round(bar_width * current / total))
+    filled = max(0, min(bar_width, filled))
+    bar = "█" * filled + "░" * (bar_width - filled)
+    return f"{label}: [{bar}] {percent:5.1f}% ({current}/{total})"
+
+
+def report_progress(message: str) -> None:
+    print(message, file=sys.stderr, flush=True)
 
 
 def nested_name(value: Any) -> Optional[str]:
@@ -711,10 +732,37 @@ def maybe_save_excel(path: Path, cases: Sequence[TacticalCase], train_cases: Seq
     return True
 
 
+def case_to_dict(case: TacticalCase) -> Dict[str, Any]:
+    return asdict(case)
+
+
+def write_streamed_case_outputs(output_dir: Path, cases: Sequence[TacticalCase], test_ratio: float) -> Dict[str, int]:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    counts = {"cases": 0, "train": 0, "test": 0}
+    with ExitStack() as stack:
+        cases_handle = stack.enter_context((output_dir / "cases.jsonl").open("w", encoding="utf-8"))
+        train_handle = stack.enter_context((output_dir / "train.jsonl").open("w", encoding="utf-8"))
+        test_handle = stack.enter_context((output_dir / "test.jsonl").open("w", encoding="utf-8"))
+        for case in cases:
+            case_dict = case_to_dict(case)
+            write_jsonl_record(cases_handle, case_dict)
+            counts["cases"] += 1
+            if stable_hash_ratio(case.match_id) < test_ratio:
+                write_jsonl_record(test_handle, case_dict)
+                counts["test"] += 1
+            else:
+                write_jsonl_record(train_handle, case_dict)
+                counts["train"] += 1
+    save_json(output_dir / "summary.json", counts)
+    return counts
+
+
 def build_cases_from_match_files(
     data_root: Path,
     match_id_filter: Optional[str] = None,
     max_matches: Optional[int] = None,
+    test_ratio: float = 0.2,
+    output_dir: Optional[Path] = None,
 ) -> List[TacticalCase]:
     matches_index = load_matches_index(data_root)
     lineups_index = load_lineups_index(data_root)
@@ -728,17 +776,50 @@ def build_cases_from_match_files(
     if max_matches is not None:
         event_files = event_files[:max_matches]
 
-    all_cases: List[TacticalCase] = []
-    for event_path in event_files:
+    collect_cases = output_dir is None
+    all_cases: List[TacticalCase] = [] if collect_cases else []
+    total_files = len(event_files)
+    report_progress(f"Processing {total_files} match file(s)")
+    streamed_counts = {"cases": 0, "train": 0, "test": 0}
+    stream_handles = None
+    if output_dir is not None:
+        output_dir.mkdir(parents=True, exist_ok=True)
+        stream_handles = {
+            "cases": (output_dir / "cases.jsonl").open("w", encoding="utf-8"),
+            "train": (output_dir / "train.jsonl").open("w", encoding="utf-8"),
+            "test": (output_dir / "test.jsonl").open("w", encoding="utf-8"),
+        }
+    for index, event_path in enumerate(event_files, start=1):
+        report_progress(format_progress(index, total_files, f"Match file {event_path.stem}"))
         raw_events = read_json_file_safe(event_path)
         if not isinstance(raw_events, list):
+            report_progress(f"Skipping {event_path.stem}: unreadable or non-list JSON")
             continue
         match_id = event_path.stem
         match = matches_index.get(match_id, {"match_id": match_id})
         enriched_events = enrich_score_state([normalize_event(e) for e in raw_events if isinstance(e, dict)], match)
         lineups = lineups_index.get(match_id)
         payload = build_match_payload(match, enriched_events, lineups)
-        all_cases.extend(build_cases(payload))
+        match_cases = build_cases(payload)
+        if collect_cases:
+            all_cases.extend(match_cases)
+        if stream_handles is not None:
+            for case in match_cases:
+                case_dict = case_to_dict(case)
+                write_jsonl_record(stream_handles["cases"], case_dict)
+                streamed_counts["cases"] += 1
+                if stable_hash_ratio(case.match_id) < test_ratio:
+                    write_jsonl_record(stream_handles["test"], case_dict)
+                    streamed_counts["test"] += 1
+                else:
+                    write_jsonl_record(stream_handles["train"], case_dict)
+                    streamed_counts["train"] += 1
+        report_progress(f"Finished {match_id}: {len(match_cases)} cases")
+    if stream_handles is not None:
+        for handle in stream_handles.values():
+            handle.close()
+        save_json(output_dir / "summary.json", streamed_counts)
+    report_progress(f"Completed {total_files} match file(s), {streamed_counts['cases'] if stream_handles is not None else len(all_cases)} total cases")
     return all_cases
 
 
@@ -775,7 +856,7 @@ def main() -> None:
         "--output-dir",
         type=Path,
         default=Path("cases_output"),
-        help="Directory where cases.json, train.json, test.json, and optional cases.xlsx will be written",
+        help="Directory where streamed outputs will be written",
     )
     parser.add_argument("--match-id", help="Optional single match ID to process when input is a StatsBomb data root")
     parser.add_argument("--max-matches", type=int, help="Optional limit when processing a data root")
@@ -784,7 +865,13 @@ def main() -> None:
     args = parser.parse_args()
 
     if args.input.is_dir():
-        cases = build_cases_from_match_files(args.input, match_id_filter=args.match_id, max_matches=args.max_matches)
+        cases = build_cases_from_match_files(
+            args.input,
+            match_id_filter=args.match_id,
+            max_matches=args.max_matches,
+            test_ratio=args.test_ratio,
+            output_dir=args.output_dir,
+        )
     else:
         payload = read_json_file(args.input)
         if isinstance(payload, list):
@@ -798,13 +885,14 @@ def main() -> None:
             raise ValueError("Unsupported input. Provide a StatsBomb data folder, an events JSON list, or an object with an events list.")
 
     args.output_dir.mkdir(parents=True, exist_ok=True)
-    train_cases, test_cases = split_cases_by_match(cases, test_ratio=args.test_ratio)
+    if not args.input.is_dir():
+        counts = write_streamed_case_outputs(args.output_dir, cases, test_ratio=args.test_ratio)
+        report_progress(f"Completed 1 input file, {counts['cases']} total cases")
+    elif not args.skip_excel:
+        print("Excel export is skipped for streamed dataset runs to avoid holding all cases in memory.", file=sys.stderr)
 
-    save_json(args.output_dir / "cases.json", [asdict(case) for case in cases])
-    save_json(args.output_dir / "train.json", [asdict(case) for case in train_cases])
-    save_json(args.output_dir / "test.json", [asdict(case) for case in test_cases])
-
-    if not args.skip_excel:
+    if not args.skip_excel and not args.input.is_dir():
+        train_cases, test_cases = split_cases_by_match(cases, test_ratio=args.test_ratio)
         wrote_excel = maybe_save_excel(args.output_dir / "cases.xlsx", cases, train_cases, test_cases)
         if not wrote_excel:
             print("openpyxl is not installed, so cases.xlsx was skipped.", file=sys.stderr)
