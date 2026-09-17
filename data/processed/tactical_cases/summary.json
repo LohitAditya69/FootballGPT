@@ -1,0 +1,26 @@
+{
+  "match_id": "match_3857276",
+  "source_file": "backend\\data\\statsbomb_raw\\match_3857276.csv",
+  "event_count": 3388,
+  "case_count": 553,
+  "home_team": "Canada",
+  "away_team": "Morocco",
+  "validation": {
+    "total_cases": 553,
+    "with_evidence": 553,
+    "without_evidence": 0,
+    "with_formation": 553,
+    "without_formation": 0,
+    "phase_distribution": {
+      "defensive_transition": 208,
+      "settled_possession": 320,
+      "final_third_attack": 25
+    },
+    "zone_distribution": {
+      "attacking_third": 216,
+      "defensive_third": 111,
+      "middle_third": 216,
+      "unknown": 10
+    }
+  }
+}
