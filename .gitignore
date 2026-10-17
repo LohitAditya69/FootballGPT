@@ -1,4 +1,11 @@
+.DS_Store
 __pycache__/
-*.pyc
+*.py[cod]
 .venv/
 .env
+*.Rhistory
+archive (3)/
+cases_output_full/
+UEFA Reports/*.pdf
+backend/data/soccernet_raw/
+backend/data/statsbomb_raw/

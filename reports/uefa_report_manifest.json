@@ -1,0 +1,46 @@
+{
+  "corpus_version": "uefa-report-set-v1",
+  "locked_date": "2026-10-17",
+  "sources": [
+    {
+      "source_id": "uefa-ucl-2024-25",
+      "title": "UEFA Champions League 2024/25 Technical Report",
+      "file": "UEFA Reports/UCL_Technical-Report_2025_DIGITAL.pdf",
+      "pages": 120,
+      "sha256": "56a7919b7aaefdb6d892d9ed10547edae338467bd48316f9798f455ea70372dd",
+      "role": "fixed UEFA technical-observer tactical reference; pages cited in question annotations"
+    },
+    {
+      "source_id": "uefa-uwcl-2024-25",
+      "title": "UEFA Women’s Champions League 2024/25 Technical Report",
+      "file": "UEFA Reports/pdf-uwcl-2025-technical-report.pdf",
+      "pages": 92,
+      "sha256": "1415992ad33384c0ae906f7a4a52c281303d0ec69ed5ce7b07b0d96cebcca3a1",
+      "role": "fixed UEFA technical-observer tactical reference; pages cited in question annotations"
+    },
+    {
+      "source_id": "uefa-uel-2024-25",
+      "title": "UEFA Europa League 2024/25 Technical Report",
+      "file": "UEFA Reports/pdf-uel-2025-technical-report_v2.pdf",
+      "pages": 96,
+      "sha256": "19b81128c8a0bf92b04b9a96d5a6c1f868d61e196b042c1bb6a2316216a2dc8c",
+      "role": "fixed UEFA technical-observer tactical reference; pages cited in question annotations"
+    },
+    {
+      "source_id": "uefa-uecl-2024-25",
+      "title": "UEFA Conference League 2024/25 Technical Report",
+      "file": "UEFA Reports/pdf-uecl-2025-technical-report.pdf",
+      "pages": 92,
+      "sha256": "ba68e210bb68a80661156a01de7caeb2bfae9292927877d965b74b3b83e65830",
+      "role": "fixed UEFA technical-observer tactical reference; pages cited in question annotations"
+    },
+    {
+      "source_id": "uefa-weuro-2025",
+      "title": "UEFA Women’s EURO 2025 Technical Report",
+      "file": "UEFA Reports/WEURO2025_Technical-Report_2025_DIGITAL.pdf",
+      "pages": 96,
+      "sha256": "0cc61e72522739409d94c19955d4756e97cf02cbb59ca82500c87b1b09cd5fab",
+      "role": "fixed UEFA technical-observer tactical reference; pages cited in question annotations"
+    }
+  ]
+}
