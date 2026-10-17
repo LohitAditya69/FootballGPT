@@ -2,11 +2,17 @@
   "schema_version": "score-fusion-v1",
   "formula": "S = αV + βG + γH",
   "weights": {
-    "alpha": 0.3333333333333333,
-    "beta": 0.3333333333333333,
+    "alpha": 0.9,
+    "beta": 0.1,
     "gamma": 0.3333333333333333
   },
-  "weight_policy": "equal-weight starting baseline; fixed before benchmark; not tuned on the 12 locked questions",
+  "weight_policy": "benchmark-v2 development-selected relative V:G ratio 0.9:0.1; gamma remains the initial 1/3 because historical cases have no page qrels; selected without using held-out questions",
+  "vector_method": "BM25",
+  "bm25": {
+    "k1": 0.8,
+    "b": 0.5,
+    "selection": "grid search on 42-question development set; maximize MRR, then Recall@5, then P@5"
+  },
   "normalization": {
     "method": "per-query min-max within each channel's retrieved candidate pool",
     "candidate_pool": "top max(4 * requested_k, 20) from each channel",

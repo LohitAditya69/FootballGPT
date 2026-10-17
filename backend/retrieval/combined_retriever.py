@@ -10,7 +10,7 @@ import networkx as nx
 
 from backend.retrieval.graph_retriever import retrieve_graph
 from backend.retrieval.historical_retriever import retrieve_historical
-from backend.retrieval.vector_retriever import retrieve_vector
+from backend.retrieval.vector_retriever import retrieve_bm25, retrieve_vector
 
 CONFIG_PATH = Path(__file__).with_name("ranking_config.json")
 
@@ -65,9 +65,15 @@ def retrieve_combined(
     total = float(sum(weights.values()))
     weights = {k: float(v) / total for k, v in weights.items()}
     pool = max(4 * top_k, 20)
-    v_rows = retrieve_vector(query, vector_index, pool)
+    if vector_index.get("schema_version") == "bm25-v1":
+        v_rows = retrieve_bm25(query, vector_index, pool)
+    else:
+        v_rows = retrieve_vector(query, vector_index, pool)
     g_rows = retrieve_graph(query, graph, pool)
-    h_rows = retrieve_historical(query_event, historical_cases, exclude_match_id=exclude_match_id, top_k=pool)
+    h_rows = (
+        retrieve_historical(query_event, historical_cases, exclude_match_id=exclude_match_id, top_k=pool)
+        if weights["H"] > 0 else []
+    )
     v_norm = normalize_channel(v_rows, "vector_score")
     g_norm = normalize_channel(g_rows, "graph_score")
     h_norm = normalize_channel(h_rows, "historical_score")
