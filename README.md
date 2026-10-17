@@ -36,13 +36,25 @@ explainability.
 10. [x] Implement historical-match filtering and similarity (**H**).
 11. [x] Combine normalized scores with GGTR; retain `αV + γH` if graph construction is impractical.
 12. [x] Compare vector-only, `V + G`, and full GGTR using Precision@k, Recall@k, and MRR for the page-labeled scope.
-13. [ ] Generate citation-grounded reports and measure factual errors against the fixed UEFA references.
-14. [ ] Produce RGG provenance JSON and render it in the interface.
-15. [ ] Document ablation results, limitations, and team contributions.
+13. [x] Generate extractive, citation-grounded evidence briefs and a human factuality review sheet; independent factuality scoring remains pending.
+14. [x] Produce RGG provenance JSON and render the evidence path in a browser view.
+15. [x] Document ablation results, limitations, project status, and commit-history contributions.
 
 ## Locked evaluation scope
 
-The frozen corpus, 12 prompts, page/event annotations, metrics, baselines, abstention rules, and historical-match leakage rule are documented in `reports/evaluation_scope_lock.md`. Hashes for the five reports are in `reports/uefa_report_manifest.json`. Retrieval metrics have been run as a 12-question pilot; answer-generation and factuality scoring remain pending.
+The frozen corpus, 12 prompts, page/event annotations, metrics, baselines, abstention rules, and historical-match leakage rule are documented in `reports/evaluation_scope_lock.md`. Hashes for the five reports are in `reports/uefa_report_manifest.json`. Retrieval metrics have been run as pilots. The answer pipeline produces verbatim, cited evidence briefs, not free-form recommendations; independent factuality scoring remains pending human review.
+
+## Grounded answer and provenance pipeline
+
+With the project environment installed, regenerate the 12 frozen test-question briefs, Reasoning Graph Generator (RGG) provenance traces, factuality review sheet, and browser view with:
+
+```bash
+./.venv/bin/python scripts/generate_grounded_reports.py
+```
+
+Open `reports/generated/index.html` to browse each question, its verbatim UEFA passages, recorded StatsBomb event window, and retrieval provenance. Machine-readable outputs are `reports/generated/grounded_reports.jsonl` and `reports/generated/rgg_provenance.jsonl`. The blank `reports/generated/factuality_review.csv` is a reviewer worksheet, not a scored evaluation. Two questions marked `not_covered` by the locked reference annotations abstain and show no tactical passages. The report generator does not use the gold reference answers to compose responses and does not infer off-ball runs, team shape, or unseen video context.
+
+See `reports/project_status_and_contributions.md` for the completed pipeline stages, remaining human-review work, pilot limitations, and contribution summary based on Git history.
 
 ## Tactical text seed corpus
 

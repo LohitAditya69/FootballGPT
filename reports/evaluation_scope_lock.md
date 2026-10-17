@@ -58,7 +58,7 @@ The twelve questions remain in the test split and are grouped into four families
 - The 12 test prompts have fixed wording, source page mappings or explicit not-covered labels, gold-reference answers, and event references.
 - Metrics, baselines, abstention handling, and match-leakage rule are fixed before benchmark execution.
 
-This locks the scope and scoring protocol. A V/G/H retrieval prototype and fixed score-fusion configuration are implemented below. The locked retrieval benchmark has now been run; answer-generation and factuality scores remain pending.
+This locks the scope and scoring protocol. A V/G/H retrieval prototype and fixed score-fusion configuration are implemented below. The locked retrieval benchmark has now been run. A citation-preserving extractive evidence-brief pipeline is implemented; independent factuality scores remain pending human review.
 
 ## Retrieval improvement addendum (2026-10-17)
 
@@ -81,3 +81,7 @@ The initial **H** candidate pool is `backend/data/historical_train_sample.jsonl.
 Initial fusion configuration is recorded in `backend/retrieval/ranking_config.json`: each channel is per-query min-max normalized over its top `max(4k, 20)` candidates (constant returned scores map to 1.0; absent candidates map to 0.0), then `S = αV + βG + γH` uses equal weights of one third. The fallback `S = αV + γH` is documented but inactive because G was feasible to build. The TF-IDF V implementation is a sparse lexical vector baseline, not dense semantic embeddings; it should be replaced or supplemented before claiming paraphrase-level semantic retrieval.
 
 The retrieval benchmark is recorded in `reports/retrieval_evaluation.md` and `reports/retrieval_evaluation_per_question.csv`. Macro results on the ten covered questions were V P@5 0.120, Recall@5 0.110, MRR 0.333; V+G P@5 0.060, Recall@5 0.124, MRR 0.090. The full formula has identical UEFA-page ranks because H returns a different evidence type and no page qrels exist for historical cases. H same-match exclusion passed for all 12 questions; H relevance and factual answer quality remain unmeasured. No parameters were tuned on the locked prompts.
+
+## Extractive answer and provenance output
+
+`scripts/generate_grounded_reports.py` runs the combined retriever for the twelve frozen test questions and creates `reports/generated/grounded_reports.jsonl`, `rgg_provenance.jsonl`, `factuality_review.csv`, and `index.html`. The report generator returns verbatim, page-cited UEFA passages alongside a separate recorded StatsBomb event window. It does not use the gold reference answers to compose answers or infer unseen context. The two `not_covered` questions abstain without displaying retrieved passages as support. The review CSV has blank human judgment fields: these outputs establish that the artifact-generation pipeline runs, not factual correctness, coach acceptance, or measured answer quality.
