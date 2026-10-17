@@ -1,0 +1,15 @@
+{
+  "schema_version": "score-fusion-v1",
+  "formula": "S = αV + βG + γH",
+  "weights": {"alpha": 0.7, "beta": 0.3, "gamma": 0.3333333333333333},
+  "vector_method": "BM25",
+  "bm25": {"k1": 2.0, "b": 0.5},
+  "note": "Frozen settings used for the v1 held-out report. Do not use for benchmark-v2 tuning.",
+  "normalization": {
+    "method": "per-query min-max within each channel's retrieved candidate pool",
+    "candidate_pool": "top max(4 * requested_k, 20) from each channel",
+    "missing_channel_score": 0.0,
+    "constant_channel_scores": "map all returned candidates to 1.0",
+    "range": [0.0, 1.0]
+  }
+}

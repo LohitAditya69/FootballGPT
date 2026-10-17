@@ -35,14 +35,14 @@ explainability.
 9. [x] Build a bounded NetworkX graph from match and tactical entities (**G**).
 10. [x] Implement historical-match filtering and similarity (**H**).
 11. [x] Combine normalized scores with GGTR; retain `αV + γH` if graph construction is impractical.
-12. [ ] Compare vector-only, `V + G`, and full GGTR using Precision@k, Recall@k, and MRR.
+12. [x] Compare vector-only, `V + G`, and full GGTR using Precision@k, Recall@k, and MRR for the page-labeled scope.
 13. [ ] Generate citation-grounded reports and measure factual errors against the fixed UEFA references.
 14. [ ] Produce RGG provenance JSON and render it in the interface.
 15. [ ] Document ablation results, limitations, and team contributions.
 
 ## Locked evaluation scope
 
-The frozen corpus, 12 prompts, page/event annotations, metrics, baselines, abstention rules, and historical-match leakage rule are documented in `reports/evaluation_scope_lock.md`. Hashes for the five reports are in `reports/uefa_report_manifest.json`. The locked question set is a 12-question pilot; model scores have not been run.
+The frozen corpus, 12 prompts, page/event annotations, metrics, baselines, abstention rules, and historical-match leakage rule are documented in `reports/evaluation_scope_lock.md`. Hashes for the five reports are in `reports/uefa_report_manifest.json`. Retrieval metrics have been run as a 12-question pilot; answer-generation and factuality scoring remain pending.
 
 ## Tactical text seed corpus
 
@@ -85,11 +85,15 @@ The manifest at `backend/data/retrieval_graph_manifest.json` records input and g
 5. [x] Combine them with `S = αV + βG + γH` and document the selected weights.
 6. [x] Keep `S = αV + γH` as the documented fallback only if G proves infeasible; it is inactive because G was built.
 
-V uses `backend/retrieval/vector_retriever.py`; rebuild its index with `python3 scripts/build_vector_index.py`. The current implementation is a deterministic sparse lexical vector baseline (unigrams and adjacent bigrams), not a dense neural embedding model. A dense model could not be installed because the package index was unreachable, so semantic paraphrase matching remains a limitation. The vector index is `backend/data/uefa_tfidf_index.json`.
+Retrieval development and held-out results are in `reports/retrieval_development_evaluation.md`, `reports/retrieval_evaluation.md` (v1), and `reports/retrieval_v2_heldout_evaluation.md` (20 new held-out questions); per-question tables accompany the reports. Benchmark v2 adds 20 development and 20 held-out questions across all five UEFA reports, with page-disjoint splits. Tuning on 42 development questions selected BM25 `k1=0.8`, `b=0.5`, and a 0.9:0.1 lexical-to-graph ratio. On the new 20-question held-out set, this scored P@5 0.080, Recall@5 0.400, MRR 0.292, versus fixed BM25 at 0.090, 0.450, 0.275; TF-IDF scored 0.090, 0.450, 0.283. The selected method only had slightly higher MRR, while the lexical baselines retrieved more target pages in the top five. The earlier v1 test is retained as a separate version; its selected settings are archived in `backend/retrieval/ranking_config_v1.json`. H has no judged relevance, and not-covered v1 questions have no calibrated abstention rule. All are pilot diagnostics.
+
+Benchmark v2 questions and page annotations are in `reports/retrieval_benchmark_v2_questions.csv`. Validate the page/split lock with `python3 scripts/validate_retrieval_benchmark_v2.py`, tune only on development pages with `python3 scripts/tune_retrieval_on_dev.py`, build the selected BM25 index with `python3 scripts/build_bm25_index.py`, and run the new held-out evaluation once with `python3 scripts/evaluate_retrieval_v2_test.py`. Do not use the held-out results to retune.
+
+V uses `backend/retrieval/vector_retriever.py`; rebuild TF-IDF with `python3 scripts/build_vector_index.py` or the development-selected BM25 index with `python3 scripts/build_bm25_index.py`. Both methods use the same page-bounded chunks and tokenizer and are sparse lexical retrieval, not dense neural embeddings; semantic paraphrase matching remains a limitation. Indexes are `backend/data/uefa_tfidf_index.json` and `backend/data/uefa_bm25_index.json`.
 
 Each component is min-max normalized per query over that retriever’s top `max(4 × requested_k, 20)` candidates. If a channel’s returned scores are all equal, each returned candidate receives 1.0; candidates absent from a channel receive 0.0. This puts the three returned score lists on a common 0–1 range without tuning calibration values against the locked questions. The rule is stored in `backend/retrieval/ranking_config.json` and implemented by `normalize_channel()`.
 
-The fusion rule is `S = αV + βG + γH`. The fixed starting configuration uses equal weights (`α = β = γ = 1/3`) in `backend/retrieval/ranking_config.json`; `backend/retrieval/combined_retriever.py` loads the config and returns component scores alongside the fused score. The weights are an initial baseline, not values selected by tuning on the 12 locked questions. Mixed-source results include UEFA chunks from V/G and train-only match situations from H.
+The fusion rule is `S = αV + βG + γH`. `backend/retrieval/ranking_config.json` records the v2 development-selected BM25 settings (`k1=0.8`, `b=0.5`) and V:G ratio (0.9:0.1); γ remains at its initial 1/3 because the benchmark has no H relevance labels. `backend/retrieval/combined_retriever.py` accepts either a BM25 or TF-IDF index and returns component scores alongside the fused score. The new held-out set shows only a small MRR gain and lower top-five recall for the selected setting; it is not a clear overall improvement. Mixed-source results include UEFA chunks from V/G and train-only match situations from H.
 
 ## Historical retrieval (**H**)
 
