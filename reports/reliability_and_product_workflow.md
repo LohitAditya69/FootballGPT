@@ -12,26 +12,26 @@
 
 ### 1A. Audit benchmark and labels
 
-- [ ] Confirm all v1/v2 questions map to existing pages in the frozen report corpus or are explicitly marked not covered.
-- [ ] Check question, split, report ID, page number, and report hash consistency.
-- [ ] Review the 42 development questions for duplicate intent, overly report-specific wording, and target-page omissions.
-- [ ] Preserve v2 held-out labels and results unchanged; record any discovered annotation issue as a new benchmark version rather than silently editing v2.
-- [ ] Reconfirm historical retrieval excludes each query match and state clearly that historical relevance has no judged qrels.
+- [x] Confirm all v1/v2 questions map to existing pages in the frozen report corpus or are explicitly marked not covered.
+- [x] Check question, split, report ID, page number, and report hash consistency.
+- [x] Review the 42 development questions for duplicate intent, overly report-specific wording, and target-page omissions.
+- [x] Preserve v2 held-out labels and results unchanged; record any discovered annotation issue as a new benchmark version rather than silently editing v2.
+- [x] Reconfirm historical retrieval excludes each query match and state clearly that historical relevance has no judged qrels.
 
 ### 1B. Audit generated evidence and risks
 
-- [ ] For each of the 12 generated briefs, verify every quoted UEFA passage against its cited page.
-- [ ] Verify every match statement against the corresponding recorded StatsBomb event window.
-- [ ] Confirm the two not-covered questions abstain and do not present retrieved passages as support.
-- [ ] Check that the provenance JSON links each displayed citation to its retrieved chunk and keeps event evidence distinct from tactical principles.
-- [ ] Keep missing-video limitations explicit: event data does not prove off-ball runs, team shape, or nearby options.
-- [ ] Update the reliability findings, unresolved issues, README, and completion status before product work begins.
+- [x] For each of the 12 generated briefs, verify every quoted UEFA passage against its cited page.
+- [x] Verify every match statement against the corresponding recorded StatsBomb event window.
+- [x] Confirm the two not-covered questions abstain and do not present retrieved passages as support.
+- [x] Check that the provenance JSON links each displayed citation to its retrieved chunk and keeps event evidence distinct from tactical principles.
+- [x] Keep missing-video limitations explicit: event data does not prove off-ball runs, team shape, or nearby options.
+- [x] Update the reliability findings, unresolved issues, README, and completion status before product work begins.
 
 ### Lap 1 exit criteria
 
-- [ ] Reliability report lists reviewed artifacts, checks performed, findings, and unresolved limitations.
-- [ ] No held-out labels or scores were changed or used for tuning.
-- [ ] The API fields needed to expose citations, event evidence, abstention, and provenance are agreed and recorded for Lap 2.
+- [x] Reliability report lists reviewed artifacts, checks performed, findings, and unresolved limitations.
+- [x] No held-out labels or scores were changed or used for tuning.
+- [x] The API fields needed to expose citations, event evidence, abstention, and provenance are agreed and recorded for Lap 2.
 
 ## Lap 2 — Backend
 
@@ -109,11 +109,12 @@
 | Checkpoint | Pull status | Commit | Notes |
 |---|---|---|---|
 | Workflow plan | Pull attempted on 2026-10-19 and retried before Lap 3 split; both blocked because `github.com` could not be resolved | `8d2bc6c` | Local workflow plan committed; one commit ahead of `origin/codex/pipeline-laps`. Retry pull/push when network access is available. |
+| Lap 1 reliability review | Pull attempted at Lap 1 start; blocked because `github.com` could not be resolved | Lap 1 completion commit (local) | Review results are in `reliability_review_lap1.md`; preserve held-out data and address retrieval alignment using development data. |
 
 ## Current status
 
 - [x] Workflow and lap checklist written.
-- [ ] Lap 1 reliability review.
+- [x] Lap 1 reliability review; findings and remaining risks are recorded in `reports/reliability_review_lap1.md`.
 - [ ] Lap 2 backend build and versioned API contract.
 - [ ] Lap 3 frontend build and integration.
 - [ ] Git remote synchronization; pull remains blocked by DNS/network availability.

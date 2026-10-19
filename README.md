@@ -42,7 +42,7 @@ explainability.
 
 ## Locked evaluation scope
 
-The frozen corpus, 12 prompts, page/event annotations, metrics, baselines, abstention rules, and historical-match leakage rule are documented in `reports/evaluation_scope_lock.md`. Hashes for the five reports are in `reports/uefa_report_manifest.json`. Retrieval metrics have been run as pilots. The answer pipeline produces verbatim, cited evidence briefs, not free-form recommendations; independent factuality scoring remains pending human review.
+The frozen corpus, 12 prompts, page/event annotations, metrics, baselines, abstention rules, and historical-match leakage rule are documented in `reports/evaluation_scope_lock.md`. Hashes for the five reports are in `reports/uefa_report_manifest.json`. Retrieval metrics have been run as pilots. Lap 1 integrity checks passed for citations, raw event windows, provenance, and abstentions, but only 3 of 30 displayed citations matched locked target pages (across 2 of 10 covered questions); see `reports/reliability_review_lap1.md`. This is an alignment diagnostic, not an independent factuality score. The answer pipeline produces verbatim, cited evidence briefs, not free-form recommendations; independent factuality scoring remains pending human review.
 
 ## Grounded answer and provenance pipeline
 
