@@ -56,6 +56,8 @@ Open `reports/generated/index.html` to browse each question, its verbatim UEFA p
 
 See `reports/project_status_and_contributions.md` for the completed pipeline stages, remaining human-review work, pilot limitations, and contribution summary based on Git history.
 
+The next work is staged in `reports/reliability_and_product_workflow.md`: first audit benchmark and generated-evidence reliability, then build the backend and frontend in two coordinated parts with integration checkpoints and a documented Git checkpoint after each lap.
+
 ## Tactical text seed corpus
 
 `backend/data/tactical_sources.jsonl` contains four short, paraphrased coaching-principle records from FIFA Training Centre pages on high pressing, switching play, counter-attacking, and reacting to loss of possession. Each record keeps its source URL and is explicitly marked as auxiliary. These are AI-curated summaries for retrieval prototyping, not UEFA materials, full-text manuals, or gold-standard answers. They are excluded from the gold evaluation corpus. Check source reuse terms before storing or distributing full article text.
