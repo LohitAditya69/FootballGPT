@@ -25,7 +25,7 @@ def main() -> int:
 
     print(f"Starting FootballGPT API server on http://{args.host}:{args.port}")
     print("API Contract: product_api_contract_v1.md")
-    print("Health endpoint: http://{args.host}:{args.port}/health")
+    print(f"Health endpoint: http://{args.host}:{args.port}/health")
     print(f"Ask endpoint: http://{args.host}:{args.port}/api/v1/ask")
 
     uvicorn.run("backend.api.main:app", host=args.host, port=args.port, reload=args.reload)
