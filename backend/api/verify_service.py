@@ -74,16 +74,16 @@ def run_verification() -> bool:
         print(f"  Situation {h['evidence_id']}: match={h['match_id']}, score={h['historical_score']}")
     print("Match 69289 strictly excluded from all historical results.")
 
-    # 4. Not-covered question (explicit abstention)
-    print("\n[4] Checking Not-Covered Abstention (/api/v1/ask)...")
-    payload_not_covered = {
+    # 4. Weak-evidence question (explicit abstention)
+    print("\n[4] Checking Weak-Evidence Abstention (/api/v1/ask)...")
+    payload_weak_evidence = {
         "question": "Arsenal’s pass from Eduardo toward Fredrik Ljungberg is recorded after a blocked shot and goalkeeper action, and the pass outcome is marked incomplete. What should a coach verify about the possession/restart before judging the pass choice? Given the actual setup, what safer or more progressive option was available?",
         "context": {
             "match_id": "3749448",
             "trigger_event_id": "6cfd4b03-ddc9-4e64-8af3-d743540aea3f",
         },
     }
-    res = client.post("/api/v1/ask", json=payload_not_covered)
+    res = client.post("/api/v1/ask", json=payload_weak_evidence)
     print(f"Status: {res.status_code}")
     data = res.json()
     print(f"Status field: {data.get('status')}")
@@ -92,7 +92,7 @@ def run_verification() -> bool:
     print(f"Tactical passages: {data.get('tactical_passages')}")
     assert res.status_code == 200
     assert data["status"] == "abstained"
-    assert data["support_status"] == "not_covered"
+    assert data["support_status"] == "unknown"
     assert data["answer_mode"] == "abstain"
     assert data["tactical_passages"] == []
 

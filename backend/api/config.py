@@ -20,11 +20,11 @@ class Settings:
     retrieval_graph_path: Path = data_dir / "retrieval_graph.json"
     historical_index_path: Path = data_dir / "historical_train_sample.jsonl.gz"
     event_evidence_path: Path = data_dir / "question_event_evidence.jsonl"
-    evaluation_seeds_path: Path = reports_dir / "evaluation_seed_questions.csv"
     ranking_config_path: Path = project_root / "backend" / "retrieval" / "ranking_config.json"
 
     # Retrieval and evidence quality thresholds
     min_bm25_score_threshold: float = 4.0
+    min_graph_score_threshold: float = 0.5
     top_k_tactical: int = 3
     top_k_historical: int = 3
 

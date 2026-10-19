@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import sys
 from pathlib import Path
 from unittest.mock import patch
@@ -140,8 +139,8 @@ def test_supported_question_response_contract(client: TestClient, service: Tacti
     assert any("Passages are copied verbatim" in l for l in data["limitations"])
 
 
-def test_not_covered_question_abstention(client: TestClient) -> None:
-    # Known not-covered seed question
+def test_event_specific_question_abstains_without_supported_passage(client: TestClient) -> None:
+    # Retrieval abstention does not depend on benchmark labels.
     payload = {
         "question": "Arsenal’s pass from Eduardo toward Fredrik Ljungberg is recorded after a blocked shot and goalkeeper action, and the pass outcome is marked incomplete. What should a coach verify about the possession/restart before judging the pass choice? Given the actual setup, what safer or more progressive option was available?",
         "context": {
@@ -155,10 +154,10 @@ def test_not_covered_question_abstention(client: TestClient) -> None:
 
     assert data["schema_version"] == "footballgpt-response-v1"
     assert data["status"] == "abstained"
-    assert data["support_status"] == "not_covered"
+    assert data["support_status"] == "unknown"
     assert data["answer_mode"] == "abstain"
     assert data["tactical_passages"] == []
-    assert "not covered" in data["answer"].lower()
+    assert "no adequately supported" in data["answer"].lower()
 
 
 def test_weak_evidence_abstention(client: TestClient) -> None:
@@ -174,7 +173,7 @@ def test_weak_evidence_abstention(client: TestClient) -> None:
     assert data["status"] == "abstained"
     assert data["answer_mode"] == "abstain"
     assert data["tactical_passages"] == []
-    assert data["support_status"] in ("not_covered", "unknown")
+    assert data["support_status"] == "unknown"
 
 
 def test_event_evidence_and_same_match_exclusion(client: TestClient) -> None:
@@ -231,40 +230,6 @@ def test_unresolved_event_context(client: TestClient) -> None:
     assert data["event_evidence"] is None
     assert data["historical_examples"] == []
     assert any("could not be resolved" in lim for lim in data["limitations"])
-
-
-def test_all_frozen_seed_questions(service: TacticalService, client: TestClient) -> None:
-    import csv
-    if not settings.evaluation_seeds_path.exists():
-        pytest.skip("evaluation_seed_questions.csv not available")
-
-    with open(settings.evaluation_seeds_path, encoding="utf-8-sig") as f:
-        seeds = [r for r in csv.DictReader(f) if r.get("split") == "test"]
-
-    assert len(seeds) == 12
-    for seed in seeds:
-        case_id = seed["case_id"]
-        gold_status = seed["gold_support_status"]
-        q = seed.get("revised_question_seed") or seed["question_seed"]
-        payload = {
-            "question": q,
-            "context": {
-                "match_id": seed["match_id"],
-                "trigger_event_id": seed["trigger_event_id"],
-            },
-        }
-        res = client.post("/api/v1/ask", json=payload)
-        assert res.status_code == 200, f"Failed for {case_id}: {res.text}"
-        data = res.json()
-        expected_status = "abstained" if gold_status == "not_covered" else "answered"
-        assert data["status"] == expected_status, f"{case_id}: expected {expected_status}, got {data['status']}"
-        assert data["support_status"] == gold_status, f"{case_id}: expected {gold_status}, got {data['support_status']}"
-        if expected_status == "abstained":
-            assert data["tactical_passages"] == []
-        else:
-            assert len(data["tactical_passages"]) > 0
-            for p in data["tactical_passages"]:
-                assert p["evidence_id"] in service.fixed_chunks
 
 
 def test_internal_service_error_handling(service: TacticalService) -> None:

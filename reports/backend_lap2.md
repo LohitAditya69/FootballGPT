@@ -56,7 +56,7 @@ uvicorn backend.api.main:app --host 127.0.0.1 --port 8000
 
 ### Running test suite
 ```bash
-# Run all 13 focused API and contract tests
+# Run all 12 focused API and contract tests
 pytest backend/api/test_api.py -v
 ```
 
@@ -87,7 +87,7 @@ curl -X POST http://127.0.0.1:8000/api/v1/ask \
   -d '{"question": "Sevilla intercepted Barcelona’s incomplete pass and then played to Diego Perotti. Should the first action prioritize securing possession or countering forward?", "context": {"match_id": "69289", "trigger_event_id": "a8741e2f-3aff-4a73-aacb-1ae683e6a2a1"}}'
 ```
 
-4. Out-of-scope / not-covered question (abstention):
+4. Weak-evidence question (abstention):
 ```bash
 curl -X POST http://127.0.0.1:8000/api/v1/ask \
   -H "Content-Type: application/json" \
@@ -108,4 +108,11 @@ curl -X POST http://127.0.0.1:8000/api/v1/ask \
 - [x] Part 2 reliability and provenance complete.
 - [x] API contract implemented without unapproved changes.
 - [x] Scope-reviewed local commit recorded.
+
+### Review follow-up
+
+- [x] Removed evaluation-seed gold labels and seed-derived event grounding from runtime request handling.
+- [x] Use `unknown` when retrieval finds no adequately supported passage; do not infer source non-coverage from retrieval failure.
+- [x] Require graph evidence score at or above the configured 0.5 threshold before it can independently support an answer.
+- [x] Corrected the formatted health endpoint shown by the CLI startup message.
 

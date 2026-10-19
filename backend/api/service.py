@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import csv
 import json
 import logging
 import re
@@ -33,11 +32,6 @@ def _extract_excerpt(text: str) -> str:
     return sentences[0] if sentences else cleaned
 
 
-def _normalize_text(text: str) -> str:
-    """Normalize text for seed lookup comparison."""
-    return re.sub(r"[^\w\s]", "", text.lower()).strip()
-
-
 class TacticalService:
     def __init__(self, cfg: Settings = settings) -> None:
         self.cfg = cfg
@@ -50,8 +44,6 @@ class TacticalService:
         self.historical_cases: list[dict[str, Any]] = []
         self.event_windows_by_match_and_trigger: dict[tuple[str, str], dict[str, Any]] = {}
         self.event_windows_by_match: dict[str, list[dict[str, Any]]] = {}
-        self.seeds_by_normalized_question: dict[str, dict[str, Any]] = {}
-        self.seeds_by_match_and_trigger: dict[tuple[str, str], dict[str, Any]] = {}
 
     def initialize(self) -> None:
         if self._initialized:
@@ -109,24 +101,6 @@ class TacticalService:
                     if mid:
                         self.event_windows_by_match.setdefault(mid, []).append(window)
 
-        # 7. Load evaluation seeds for support status reference
-        if self.cfg.evaluation_seeds_path.exists():
-            try:
-                with self.cfg.evaluation_seeds_path.open(encoding="utf-8-sig", newline="") as f:
-                    for row in csv.DictReader(f):
-                        q_orig = row.get("question_seed", "")
-                        q_rev = row.get("revised_question_seed", "")
-                        if q_orig:
-                            self.seeds_by_normalized_question[_normalize_text(q_orig)] = row
-                        if q_rev:
-                            self.seeds_by_normalized_question[_normalize_text(q_rev)] = row
-                        mid = str(row.get("match_id", ""))
-                        tid = str(row.get("trigger_event_id", ""))
-                        if mid and tid:
-                            self.seeds_by_match_and_trigger[(mid, tid)] = row
-            except Exception as e:
-                logger.warning("Failed to load evaluation seeds: %s", e)
-
         self._initialized = True
         logger.info("TacticalService successfully initialized (%d fixed chunks loaded).", len(self.fixed_chunks))
 
@@ -162,9 +136,9 @@ class TacticalService:
         }
 
     def _resolve_event_context(
-        self, context: Any, seed_match: dict[str, Any] | None
+        self, context: Any
     ) -> tuple[dict[str, Any] | None, dict[str, Any] | None, list[str]]:
-        """Resolve event window and trigger event from request context or seed."""
+        """Resolve an event window only from explicit request context."""
         limitations: list[str] = []
         window: dict[str, Any] | None = None
         trigger_event: dict[str, Any] | None = None
@@ -190,13 +164,6 @@ class TacticalService:
                     window = w
                     break
 
-        # Fallback to seed context if request context was omitted but question is an evaluation seed
-        if not window and seed_match:
-            sm_id = str(seed_match.get("match_id", ""))
-            st_id = str(seed_match.get("trigger_event_id", ""))
-            if sm_id and st_id and (sm_id, st_id) in self.event_windows_by_match_and_trigger:
-                window = self.event_windows_by_match_and_trigger[(sm_id, st_id)]
-
         if window:
             target_tid = req_trigger_id or window.get("trigger_event_id")
             for ev in window.get("events", []):
@@ -221,19 +188,8 @@ class TacticalService:
         self.initialize()
         req_id = request_id or f"req_{uuid.uuid4().hex[:12]}"
         question = request.question.strip()
-        norm_q = _normalize_text(question)
-
-        # Check if question corresponds to a known evaluation seed
-        seed_match = self.seeds_by_normalized_question.get(norm_q)
-        if not seed_match and request.context and request.context.match_id and request.context.trigger_event_id:
-            seed_match = self.seeds_by_match_and_trigger.get(
-                (request.context.match_id, request.context.trigger_event_id)
-            )
-
-        is_seed_not_covered = bool(seed_match and seed_match.get("gold_support_status") == "not_covered")
-
         # 1. Resolve event context
-        window, trigger_event, event_limits = self._resolve_event_context(request.context, seed_match)
+        window, trigger_event, event_limits = self._resolve_event_context(request.context)
         match_id_to_exclude = str(request.context.match_id) if (request.context and request.context.match_id) else (
             str(window["match_id"]) if window else None
         )
@@ -273,7 +229,10 @@ class TacticalService:
         q_unigrams = set(t for t in tokenize(question) if "_" not in t)
 
         top_v_score = v_rows[0]["vector_score"] if v_rows else 0.0
-        has_graph_concept = bool(g_rows)
+        has_adequate_graph = any(
+            float(row.get("graph_score", 0.0)) >= self.cfg.min_graph_score_threshold
+            for row in g_rows
+        )
 
         matched_unigram_count = 0
         term_overlap_ratio = 0.0
@@ -290,20 +249,17 @@ class TacticalService:
             and term_overlap_ratio >= 0.25
         )
 
-        has_adequate_support = (has_adequate_lexical or has_graph_concept) and not is_seed_not_covered
+        has_adequate_support = has_adequate_lexical or has_adequate_graph
 
         # 3. Determine abstention vs answered
         if not has_adequate_support:
-            support_status = "not_covered" if is_seed_not_covered else (
-                "not_covered" if top_v_score == 0.0 and not has_graph_concept else "unknown"
-            )
+            # Retrieval failure cannot prove that the frozen source set does not
+            # cover a topic; reserve "not_covered" for independently curated labels.
+            support_status = "unknown"
             answer_mode = "abstain"
             status = "abstained"
             answer = (
-                "The frozen UEFA reference set marks this question as not covered. "
-                "No tactical answer is provided from these reports."
-                if support_status == "not_covered"
-                else "No adequately supported tactical passage was retrieved from the frozen UEFA reference set; "
+                "No adequately supported tactical passage was retrieved from the frozen UEFA reference set; "
                 "abstain pending source review."
             )
             limitations.append(
@@ -405,7 +361,7 @@ class TacticalService:
             )
 
         # 6. Build Provenance Trace
-        qid = str(seed_match["case_id"]) if seed_match else req_id
+        qid = req_id
         q_node = f"question:{qid}"
         nodes: list[dict[str, Any]] = [{"id": q_node, "node_type": "question", "text": question}]
         edges: list[dict[str, Any]] = []
