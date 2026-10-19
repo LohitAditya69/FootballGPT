@@ -42,7 +42,7 @@ explainability.
 
 ## Locked evaluation scope
 
-The frozen corpus, 12 prompts, page/event annotations, metrics, baselines, abstention rules, and historical-match leakage rule are documented in `reports/evaluation_scope_lock.md`. Hashes for the five reports are in `reports/uefa_report_manifest.json`. Retrieval metrics have been run as pilots. The answer pipeline produces verbatim, cited evidence briefs, not free-form recommendations; independent factuality scoring remains pending human review.
+The frozen corpus, 12 prompts, page/event annotations, metrics, baselines, abstention rules, and historical-match leakage rule are documented in `reports/evaluation_scope_lock.md`. Hashes for the five reports are in `reports/uefa_report_manifest.json`. Retrieval metrics have been run as pilots. Lap 1 integrity checks passed for citations, raw event windows, provenance, and abstentions, but only 3 of 30 displayed citations matched locked target pages (across 2 of 10 covered questions); see `reports/reliability_review_lap1.md`. This is an alignment diagnostic, not an independent factuality score. The answer pipeline produces verbatim, cited evidence briefs, not free-form recommendations; independent factuality scoring remains pending human review.
 
 ## Grounded answer and provenance pipeline
 
@@ -55,6 +55,8 @@ With the project environment installed, regenerate the 12 frozen test-question b
 Open `reports/generated/index.html` to browse each question, its verbatim UEFA passages, recorded StatsBomb event window, and retrieval provenance. Machine-readable outputs are `reports/generated/grounded_reports.jsonl` and `reports/generated/rgg_provenance.jsonl`. The blank `reports/generated/factuality_review.csv` is a reviewer worksheet, not a scored evaluation. Two questions marked `not_covered` by the locked reference annotations abstain and show no tactical passages. The report generator does not use the gold reference answers to compose responses and does not infer off-ball runs, team shape, or unseen video context.
 
 See `reports/project_status_and_contributions.md` for the completed pipeline stages, remaining human-review work, pilot limitations, and contribution summary based on Git history.
+
+The next work is staged in `reports/reliability_and_product_workflow.md`: Lap 1 audits benchmark and generated-evidence reliability, Lap 2 builds the backend and freezes its API contract, and Lap 3 builds the frontend against that contract. Each product lap has two parts and integration checkpoints.
 
 ## Tactical text seed corpus
 
