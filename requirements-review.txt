@@ -1,0 +1,2 @@
+# Optional dependency used only to read retrieval_review_v1.xlsx.
+openpyxl==3.1.5

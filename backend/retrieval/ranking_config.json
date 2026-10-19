@@ -6,7 +6,7 @@
     "beta": 0.1,
     "gamma": 0.3333333333333333
   },
-  "weight_policy": "benchmark-v2 development-selected relative V:G ratio 0.9:0.1; gamma remains the initial 1/3 because historical cases have no page qrels; selected without using held-out questions",
+  "weight_policy": "benchmark-v2 development-selected relative V:G ratio 0.9:0.1; gamma remains the initial 1/3 because historical cases have no independent relevance labels; the generic combined retriever supports H fusion, while the live API returns historical examples as a separate evidence channel; selected without using held-out questions",
   "vector_method": "BM25",
   "bm25": {
     "k1": 0.8,

@@ -1,52 +1,68 @@
 # Retrieval development evaluation
 
-Development set: 42 AI-drafted, page-labeled questions over pages outside v1 and v2 held-out qrels. Labels are target-page annotations from the fixed report text; they are not human coach judgments.
+The workbook-based scorecard in `retrieval_workbook_review_evaluation_v1.md`
+is now the primary day-to-day prototype evaluation. This earlier AI-qrel
+development comparison is retained as a supporting baseline; the v1/v2 sets
+remain frozen archived holdouts.
+
+Development set: 42 AI-drafted questions with source-qualified, multi-page qrels outside v1 and v2 held-out qrels. Labels are AI-assisted candidate-page judgments from the fixed report text; they are incomplete and not human coach judgments.
+
+P@5 counts relevant pages in the top five divided by five; Recall@5 counts retrieved relevant pages divided by all labeled relevant pages; MRR uses the first relevant page.
 
 ## Baseline and selected development metrics
 
 | Method | P@5 | Recall@5 | MRR |
 |---|---:|---:|---:|
-| TF-IDF | 0.119 | 0.595 | 0.428 |
-| BM25 (k1=1.5, b=0.75) | 0.124 | 0.619 | 0.523 |
-| Selected BM25 + graph setting | 0.133 | 0.667 | 0.554 |
+| TF-IDF | 0.162 | 0.583 | 0.521 |
+| BM25 (k1=1.5, b=0.75) | 0.171 | 0.619 | 0.612 |
+| Selected BM25 + graph setting | 0.181 | 0.655 | 0.634 |
 
 ## Selected parameters
 
-- BM25 `k1=0.8`, `b=0.5`; graph weight `β=0.1` with lexical weight `1−β`.
+- BM25 `k1=1.5`, `b=0.25`; graph weight `β=0.2` with lexical weight `1−β`.
 - Selection criterion fixed before tuning: maximize development MRR, then Recall@5, then P@5; ties prefer less graph contribution and values nearer the conventional BM25 baseline.
 - Grid searched 80 combinations over `k1=(0.8, 1.2, 1.5, 2.0)`, `b=(0.25, 0.5, 0.75, 1.0)`, and graph weights `(0.0, 0.1, 0.2, 0.3, 0.5)`.
 - This is development-only tuning. Neither v1's 12 questions nor the 20 v2 held-out questions were used to select parameters.
 
 ## Limitations
 
-- Queries were drafted from the fixed reports and annotated with a target page; this is not independent human relevance adjudication and may favor report-specific phrasing.
-- Each item has one target page, although other pages may be relevant. The labels are useful for controlled development but incomplete.
-- On the new v2 held-out set, the selected setting has slightly higher MRR than fixed BM25 (0.292 vs 0.275) but lower P@5 and Recall@5 (0.080/0.400 vs 0.090/0.450); this is not a clear overall gain. Do not tune on v2 held-out questions.
+- Labels are AI-assisted candidate-page judgments, not exhaustive page-by-page adjudication and not coach review; omitted relevant pages remain possible.
+- The original target page remains relevant. Additional pages were included only when their report text directly addresses the question; retrieval rank alone is not a relevance judgment.
+- On the v2 held-out set, selected BM25+G has slightly higher MRR than fixed BM25 but lower P@5 and Recall@5; this is not a clear overall gain. Do not tune against v2 held-out questions.
 
-## Retrieval diagnostics and next step
+Per-question ranks and qrel provenance are in `retrieval_development_per_question.csv`.
 
-Development-only diagnostics compared page-bounded chunks of 80, 100, 150,
-200, 300, and 500 words (with 16–50 word overlap) using the same 42 target-page
-questions. BM25-only MRR ranged from 0.432 to 0.539 and Recall@5 from 0.619 to
-0.690. The current 300-word chunks were not consistently best: 200-word chunks
-slightly increased Recall@5, while 150-word chunks improved a separate
-top-three-chunk target-page diagnostic. These tradeoffs do not establish a
-better general setting, so the production chunk size remains unchanged.
+## Human review and semantic retrieval status
 
-Reciprocal-rank fusion of the lexical and graph rankings also failed to improve
-the development metrics over the current normalized score fusion. No ranking
-weights or held-out results were changed from these diagnostics.
+The current multi-page qrels are still AI-assisted and incomplete. A blinded
+review packet containing 1,071 development question-page candidates, full page
+text, and blank judgment fields is available at
+`retrieval_human_review_packet_v1.csv`. It draws candidates from TF-IDF,
+fixed BM25, graph retrieval, and existing labels; it is not an exhaustive
+review of all pages. Reviewers must add relevant pages missed by the candidate
+pool. The rating rubric, independent-review procedure, adjudication, and
+agreement reporting requirements are in `retrieval_human_review_protocol.md`.
 
-The per-question misses commonly use paraphrases or describe linked tactical
-ideas that do not repeat the report's wording (for example, defending one-
-versus-one over a large area, a goalkeeper's first pass, or adapting a press).
-The current BM25 and curated graph aliases are lexical methods, so this points
-to a semantic matching gap. The project environment has no embedding runtime
-or cached sentence-embedding model. The next retrieval experiment should add an
-optional dense embedding channel and compare it with fixed BM25 on development
-questions, keeping the v1 and v2 held-out sets untouched. Adopt it only if the
-development improvement is consistent and the model/dependency footprint is
-recorded. The current retrieval configuration remains the baseline until that
-comparison is available.
+Dense retrieval was evaluated after the local runtime became available. See
+`dense_retrieval_development_comparison.md` for the development-only comparison
+of BM25, MiniLM dense retrieval, three BM25+dense fusion weights, and the
+current BM25+graph baseline. Dense-only retrieval trailed fixed BM25 on the
+current qrels; the 25%-dense hybrid was close to BM25. The qrels are still
+AI-assisted and incomplete, so no production setting was changed. The runtime
+versions are listed in `requirements-embedding.txt`; the cached model revision
+is pinned in the comparison report. Complete the human review before treating
+small metric differences as evidence of improvement.
 
-Per-question ranks are in `retrieval_development_per_question.csv`.
+### Prototype workbook rescore
+
+The user-provided `retrieval_review_v1.xlsx` was incorporated as a separate
+provisional label view, without changing the workbook or replacing the
+AI-qrel baseline above. Its 1,071 labels span 42 questions: 134 direct (2),
+735 partial (1), 202 uncertain, and no adjudicated grade 0. The workbook uses
+scripted reviewer profiles, not independent human or coach judgments. The
+exported qrels omit full page text and excerpts. Current rankings were
+rescored in `retrieval_workbook_review_evaluation_v1.md`; grade 2 is the
+strict direct-support relevance definition, grade 1 is retained for a graded
+and inclusive sensitivity view, and uncertain pages are excluded. These
+candidate-pool metrics remain provisional and are not reliability or factuality
+evidence. Keep production retrieval unchanged.

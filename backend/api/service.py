@@ -18,6 +18,7 @@ from backend.api.schemas import (
     ProvenanceTrace,
     TacticalPassage,
 )
+from backend.retrieval.combined_retriever import load_ranking_config, normalize_channel
 from backend.retrieval.graph_retriever import load_graph, retrieve_graph
 from backend.retrieval.historical_retriever import load_historical_index, retrieve_historical
 from backend.retrieval.vector_retriever import load_bm25_index, retrieve_bm25
@@ -42,6 +43,8 @@ class TacticalService:
         self.bm25_index: dict[str, Any] = {}
         self.graph: Any = None
         self.historical_cases: list[dict[str, Any]] = []
+        self.ranking_config: dict[str, Any] = {}
+        self.tactical_weights: dict[str, float] = {}
         self.event_windows_by_match_and_trigger: dict[tuple[str, str], dict[str, Any]] = {}
         self.event_windows_by_match: dict[str, list[dict[str, Any]]] = {}
 
@@ -76,6 +79,24 @@ class TacticalService:
         if not self.cfg.bm25_index_path.exists():
             raise FileNotFoundError(f"BM25 index not found at {self.cfg.bm25_index_path}")
         self.bm25_index = load_bm25_index(self.cfg.bm25_index_path)
+
+        # Keep live API scoring aligned with the configuration used by the
+        # retrieval evaluation scripts.
+        self.ranking_config = load_ranking_config(self.cfg.ranking_config_path)
+        bm25_cfg = self.ranking_config.get("bm25", {})
+        if (
+            float(self.bm25_index.get("k1", -1)) != float(bm25_cfg.get("k1", -2))
+            or float(self.bm25_index.get("b", -1)) != float(bm25_cfg.get("b", -2))
+        ):
+            raise ValueError("BM25 index parameters do not match ranking_config.json")
+        configured_weights = self.ranking_config["weights"]
+        tactical_total = float(configured_weights["alpha"]) + float(configured_weights["beta"])
+        if tactical_total <= 0:
+            raise ValueError("Tactical BM25/graph weights must sum to a positive value")
+        self.tactical_weights = {
+            "V": float(configured_weights["alpha"]) / tactical_total,
+            "G": float(configured_weights["beta"]) / tactical_total,
+        }
 
         # 4. Load retrieval graph
         if not self.cfg.retrieval_graph_path.exists():
@@ -202,7 +223,7 @@ class TacticalService:
         limitations.extend(event_limits)
 
         # 2. Run retrieval
-        pool_size = max(4 * self.cfg.top_k_tactical, 30)
+        pool_size = max(4 * self.cfg.top_k_tactical, 20)
         v_raw_rows = retrieve_bm25(question, self.bm25_index, top_k=pool_size)
         g_rows = retrieve_graph(question, self.graph, top_k=pool_size)
 
@@ -249,7 +270,11 @@ class TacticalService:
             and term_overlap_ratio >= 0.25
         )
 
-        has_adequate_support = has_adequate_lexical or has_adequate_graph
+        # Graph aliases can be broad (for example, "possession" or
+        # "finishing"). They may improve ordering, but a concept match alone
+        # is not sufficient evidence that the retrieved page answers the
+        # question. Require lexical grounding before returning passages.
+        has_adequate_support = has_adequate_lexical
 
         # 3. Determine abstention vs answered
         if not has_adequate_support:
@@ -265,6 +290,10 @@ class TacticalService:
             limitations.append(
                 "No adequately supported passage was found in the frozen UEFA corpus for this query; abstention returned."
             )
+            if has_adequate_graph and not has_adequate_lexical:
+                limitations.append(
+                    "Graph concept matches were present, but lacked sufficient lexical grounding to establish page support."
+                )
             tactical_passages: list[TacticalPassage] = []
         else:
             status = "answered"
@@ -276,15 +305,8 @@ class TacticalService:
             )
 
             # Combine candidates deterministically
-            v_norm = {}
-            if v_rows:
-                v_scores = [r["vector_score"] for r in v_rows]
-                v_min, v_max = min(v_scores), max(v_scores)
-                v_norm = {
-                    r["evidence_id"]: 1.0 if v_max == v_min else (r["vector_score"] - v_min) / (v_max - v_min)
-                    for r in v_rows
-                }
-            g_norm = {r["evidence_id"]: r["graph_score"] for r in g_rows}
+            v_norm = normalize_channel(v_rows, "vector_score")
+            g_norm = normalize_channel(g_rows, "graph_score")
 
             # Fusion with 0.70 V and 0.30 G for tactical passages
             combined_candidates: list[tuple[float, dict[str, Any]]] = []
@@ -297,7 +319,10 @@ class TacticalService:
                 valid_dict = self.validate_chunk(cand)
                 if not valid_dict:
                     continue
-                fused_score = 0.70 * v_norm.get(eid, 0.0) + 0.30 * g_norm.get(eid, 0.0)
+                fused_score = (
+                    self.tactical_weights["V"] * v_norm.get(eid, 0.0)
+                    + self.tactical_weights["G"] * g_norm.get(eid, 0.0)
+                )
                 combined_candidates.append((fused_score, {**valid_dict, "score": round(fused_score, 4)}))
 
             combined_candidates.sort(key=lambda item: (-item[0], item[1]["evidence_id"]))

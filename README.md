@@ -92,31 +92,101 @@ The manifest at `backend/data/retrieval_graph_manifest.json` records input and g
 
 ## Retrieval pipeline checklist
 
-1. [ ] **V — Semantic vector retrieval:** the sparse TF-IDF vector baseline is built; dense embedding-based semantic retrieval remains pending.
+1. [x] **V — Retrieval comparison:** sparse TF-IDF/BM25 and a dense MiniLM development retriever have been compared; dense was not promoted because it underperformed and the labels remain provisional.
 2. [x] **G — Graph retrieval:** link training-split teams, available formations, events, and tactical concepts without adding gold labels.
 3. [x] **H — Historical retrieval:** index train-split match situations and exclude the query match from candidates.
 4. [x] Normalize V, G, and H scores to a shared 0–1 range.
-5. [x] Combine them with `S = αV + βG + γH` and document the selected weights.
+5. [x] The offline combined retriever supports `S = αV + βG + γH`; the live API combines V/G for UEFA passages and returns H as a separate, explicitly labeled example channel.
 6. [x] Keep `S = αV + γH` as the documented fallback only if G proves infeasible; it is inactive because G was built.
+
+### Primary prototype evaluation
+
+The workbook-based scorecard in `reports/retrieval_workbook_review_evaluation_v1.md`
+is now the primary day-to-day prototype evaluation. Refresh the rankings with
+`scripts/compare_dense_retrieval_on_dev.py`, import the unchanged workbook with
+`scripts/import_retrieval_review_workbook.py`, then score it with
+`scripts/evaluate_retrieval_workbook_review_v1.py`. These labels come from
+scripted reviewer profiles and a retrieval-generated candidate pool, so this
+is a prototype diagnostic only—not human/coach validation or publication
+evidence. Keep the production config unchanged unless later independent review
+supports a consistent gain.
+
+To evaluate the actual API ranker, run
+`scripts/evaluate_backend_workbook_review.py`; its current top-3 results are in
+`reports/retrieval_backend_workbook_evaluation_v1.md`. A spot audit of two
+direct-support labels is in `reports/retrieval_workbook_label_audit_v1.md`.
+That audit found both page-level labels defensible, while one selected quote
+needs a better supporting sentence and the other target page is still missed
+by the API top three. The API-aligned V:G sensitivity sweep slightly favors
+BM25-only on P@3, recall, and nDCG while tying MRR; it is not promoted because
+the workbook labels are provisional and were reused for selection.
+
+An exploratory 128-setting BM25/graph sweep is available in
+`scripts/tune_retrieval_on_workbook.py`; results are in
+`reports/retrieval_workbook_tuning_v1.md`. Its top candidate improved nDCG@5
+and MRR slightly but reduced recall, so it was not promoted and the serving
+configuration remains unchanged. The same script runs a candidate-depth
+diagnostic (`reports/retrieval_workbook_candidate_pool_v1.csv`): a wider pool
+slightly raises direct P@5/recall, while nDCG stays flat and judged coverage
+falls. This is not enough evidence to change the serving depth.
+
+The v1 and v2 sets are no longer the primary prototype scorecard. Keep their
+questions, qrels, and reports as frozen archived holdouts for regression and
+final evaluation; never tune on them or delete them. The development semantic
+comparison and historical H proxy remain supporting diagnostics.
 
 Retrieval development and held-out results are in `reports/retrieval_development_evaluation.md`, `reports/retrieval_evaluation.md` (v1), and `reports/retrieval_v2_heldout_evaluation.md` (20 new held-out questions); per-question tables accompany the reports. Benchmark v2 adds 20 development and 20 held-out questions across all five UEFA reports, with page-disjoint splits. Tuning on 42 development questions selected BM25 `k1=0.8`, `b=0.5`, and a 0.9:0.1 lexical-to-graph ratio. On the new 20-question held-out set, this scored P@5 0.080, Recall@5 0.400, MRR 0.292, versus fixed BM25 at 0.090, 0.450, 0.275; TF-IDF scored 0.090, 0.450, 0.283. The selected method only had slightly higher MRR, while the lexical baselines retrieved more target pages in the top five. The earlier v1 test is retained as a separate version; its selected settings are archived in `backend/retrieval/ranking_config_v1.json`. H has no judged relevance, and not-covered v1 questions have no calibrated abstention rule. All are pilot diagnostics.
 
-Development-only chunk-size and reciprocal-rank-fusion diagnostics did not
-show a consistent overall gain, so the current chunks and ranking weights
-remain the baseline. The observed misses suggest a semantic matching gap:
-many questions describe tactical situations in words that differ from the
-reports. A dense embedding retriever is the next candidate to compare on the
-development set. It is not implemented yet; the project environment currently
-has no embedding runtime or cached model. See the diagnostic details and
-evaluation guardrails in `reports/retrieval_development_evaluation.md`.
+The development labels support multiple source-qualified pages per question,
+but page review remains incomplete. They are explicitly marked AI-assisted
+and incomplete; they are not coach judgments or exhaustive qrels. The
+development tuner evaluates labeled pages and guards against v1/v2 held-out
+page overlap. With the current provisional labels, the 42-question run
+selected BM25 `k1=1.5`, `b=0.25`, and graph weight `0.2` (P@5 0.181, Recall@5
+0.655, MRR 0.634). This does not establish a consistent improvement, and the
+production retrieval configuration remains the baseline. A blinded human
+review packet with 1,071 question-page candidates is in
+`reports/retrieval_human_review_packet_v1.csv`; the rating rubric and review
+workflow are in `reports/retrieval_human_review_protocol.md`. Step 7's
+development-only comparison is now implemented in
+`scripts/compare_dense_retrieval_on_dev.py` and reported in
+`reports/dense_retrieval_development_comparison.md`. On the current incomplete
+AI-assisted qrels, dense MiniLM alone trails fixed BM25 (P@5 0.081 vs 0.171;
+Recall@5 0.321 vs 0.619; MRR 0.259 vs 0.612). The 25%-dense hybrid is close to
+BM25, while the current BM25+graph configuration remains slightly higher on
+these provisional labels. No production configuration was changed. The
+embedding runtime is pinned in the optional `requirements-embedding.txt`; the
+cached MiniLM revision is recorded in the comparison report. Complete human
+review before making a retrieval-quality claim or promoting a setting. Do not
+tune on v1/v2 held-out sets.
+
+The user-provided `retrieval_review_v1.xlsx` has now been used as a separate
+prototype label input. It is unchanged and remains outside the repository. Its
+two reviewer profiles are scripted, so the results are not human or coach
+review and do not establish reviewer reliability. A compact export with IDs,
+grades, and provenance (no page text or excerpts) is in
+`reports/retrieval_workbook_review_qrels_v1.csv`; the separate rescoring and
+per-question results are in `reports/retrieval_workbook_review_evaluation_v1.md`
+and `.csv`. The workbook-based evaluation reports direct support, partial
+support, graded nDCG, and how much of each retrieved top five was judged. Treat
+it as a prototype diagnostic; production settings remain unchanged. The import
+and rescore commands are documented in
+`reports/retrieval_human_review_protocol.md`.
+
+The latest retrieval/backend test run is summarized in
+`reports/retrieval_test_run_v1.md`. The v1/v2 retrieval evaluations,
+development comparisons, and match-disjoint H proxy all completed. The H
+near-ceiling metrics are self-confirming because the proxy labels reuse the
+retriever's metadata fields. The API suite now passes all 13 tests; see the
+report for the local interpreter setup and remaining label-quality limits.
 
 Benchmark v2 questions and page annotations are in `reports/retrieval_benchmark_v2_questions.csv`. Validate the page/split lock with `python3 scripts/validate_retrieval_benchmark_v2.py`, tune only on development pages with `python3 scripts/tune_retrieval_on_dev.py`, build the selected BM25 index with `python3 scripts/build_bm25_index.py`, and run the new held-out evaluation once with `python3 scripts/evaluate_retrieval_v2_test.py`. Do not use the held-out results to retune.
 
-V uses `backend/retrieval/vector_retriever.py`; rebuild TF-IDF with `python3 scripts/build_vector_index.py` or the development-selected BM25 index with `python3 scripts/build_bm25_index.py`. Both methods use the same page-bounded chunks and tokenizer and are sparse lexical retrieval, not dense neural embeddings; semantic paraphrase matching remains a limitation. Indexes are `backend/data/uefa_tfidf_index.json` and `backend/data/uefa_bm25_index.json`.
+Production V uses `backend/retrieval/vector_retriever.py` with sparse TF-IDF/BM25. A dense MiniLM comparator is implemented separately in `scripts/compare_dense_retrieval_on_dev.py`; it is an experiment and is not wired into the production API. Dense retrieval did not outperform BM25 on current AI-assisted development qrels, so the existing sparse baseline remains active. Indexes are `backend/data/uefa_tfidf_index.json` and `backend/data/uefa_bm25_index.json`.
 
 Each component is min-max normalized per query over that retriever’s top `max(4 × requested_k, 20)` candidates. If a channel’s returned scores are all equal, each returned candidate receives 1.0; candidates absent from a channel receive 0.0. This puts the three returned score lists on a common 0–1 range without tuning calibration values against the locked questions. The rule is stored in `backend/retrieval/ranking_config.json` and implemented by `normalize_channel()`.
 
-The fusion rule is `S = αV + βG + γH`. `backend/retrieval/ranking_config.json` records the v2 development-selected BM25 settings (`k1=0.8`, `b=0.5`) and V:G ratio (0.9:0.1); γ remains at its initial 1/3 because the benchmark has no H relevance labels. `backend/retrieval/combined_retriever.py` accepts either a BM25 or TF-IDF index and returns component scores alongside the fused score. The new held-out set shows only a small MRR gain and lower top-five recall for the selected setting; it is not a clear overall improvement. Mixed-source results include UEFA chunks from V/G and train-only match situations from H.
+The generic offline fusion rule is `S = αV + βG + γH`. `backend/retrieval/ranking_config.json` records the v2 development-selected BM25 settings (`k1=0.8`, `b=0.5`) and V:G ratio (0.9:0.1); γ remains at its initial 1/3 because H has no independent relevance labels. `backend/retrieval/combined_retriever.py` accepts BM25 or TF-IDF and can fuse all three channels. In the live API, UEFA passages use the configured relative V:G weights; H runs only with grounded event context and is returned separately because historical event records are not UEFA coaching evidence. The API verifies its BM25 index parameters against this config at startup. The held-out set shows only a small MRR gain and lower top-five recall for the selected setting; it is not a clear overall improvement.
 
 ## Historical retrieval (**H**)
 

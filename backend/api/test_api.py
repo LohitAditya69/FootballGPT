@@ -29,6 +29,17 @@ def client(service: TacticalService) -> TestClient:
     return TestClient(app)
 
 
+def test_api_retrieval_matches_checked_in_ranking_config(service: TacticalService) -> None:
+    ranking = service.ranking_config
+    expected_total = ranking["weights"]["alpha"] + ranking["weights"]["beta"]
+    assert service.tactical_weights == {
+        "V": ranking["weights"]["alpha"] / expected_total,
+        "G": ranking["weights"]["beta"] / expected_total,
+    }
+    assert service.bm25_index["k1"] == ranking["bm25"]["k1"]
+    assert service.bm25_index["b"] == ranking["bm25"]["b"]
+
+
 def test_health_endpoints(client: TestClient) -> None:
     for path in ("/health", "/api/v1/health"):
         res = client.get(path)

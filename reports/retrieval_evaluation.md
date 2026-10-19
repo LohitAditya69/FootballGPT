@@ -1,6 +1,6 @@
 # Locked retrieval evaluation
 
-Benchmark v1: evaluated the original 12 frozen prompts against the locked report-page qrels using BM25 `k1=2.0`, `b=0.5`, and a 0.7:0.3 V:G ratio. These settings are archived in `backend/retrieval/ranking_config_v1.json`. No settings were tuned on these questions.
+Evaluated the 12 frozen prompts against the locked report-page qrels. No retrieval parameters were tuned on these questions.
 
 ## Macro results on the 10 UEFA-covered questions
 

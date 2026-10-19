@@ -49,10 +49,26 @@ def fused_rank(v_rows: list[dict], g_rows: list[dict], graph_weight: float) -> l
     return sorted(((src, page, score) for (src, page), score in pages.items()), key=lambda x: (-x[2], x[0], x[1]))
 
 
-def score(ranked: list[tuple[str, int, float]], source: str, page: int) -> dict[str, float]:
+def parse_qrels(q: dict) -> set[tuple[str, int]]:
+    """Parse `source:p.12;source:p.13`; accept legacy integer labels too."""
+    raw = (q.get("relevant_pages") or "").strip()
+    refs: set[tuple[str, int]] = set()
+    for item in raw.split(";"):
+        item = item.strip()
+        if not item:
+            continue
+        if ":p." in item:
+            source, page = item.rsplit(":p.", 1)
+            refs.add((source.strip(), int(page)))
+        else:
+            refs.add((q["source_id"], int(item)))
+    return refs
+
+
+def score(ranked: list[tuple[str, int, float]], qrels: set[tuple[str, int]]) -> dict[str, float]:
     top = [(s, p) for s, p, _ in ranked[:K]]
-    rank = next((i for i, pair in enumerate(top, 1) if pair == (source, page)), None)
-    return {"P@5": float((source, page) in top) / K, "Recall@5": float((source, page) in top), "MRR": 1 / rank if rank else 0.0}
+    hits = [i for i, pair in enumerate(top, 1) if pair in qrels]
+    return {"P@5": len(hits) / K, "Recall@5": len(hits) / len(qrels) if qrels else 0.0, "MRR": 1 / hits[0] if hits else 0.0}
 
 
 def macro(rows: list[dict], prefix: str) -> dict[str, float]:
@@ -62,7 +78,7 @@ def macro(rows: list[dict], prefix: str) -> dict[str, float]:
 def main() -> int:
     questions = list(csv.DictReader(DEV.open(encoding="utf-8-sig", newline="")))
     with V2_QUESTIONS.open(encoding="utf-8-sig", newline="") as f:
-        questions.extend({"dev_id": r["question_id"], "question": r["question"], "source_id": r["source_id"], "relevant_pages": r["relevant_pages"], "topic": r["topic"], "annotation_basis": r["annotation_basis"]} for r in csv.DictReader(f) if r["split"] == "dev")
+        questions.extend({"dev_id": r["question_id"], "question": r["question"], "source_id": r["source_id"], "relevant_pages": r["relevant_pages"], "topic": r["topic"], "annotation_basis": r["annotation_basis"], "annotation_status": r.get("annotation_status", "") } for r in csv.DictReader(f) if r["split"] == "dev")
     if len(questions) < 20:
         raise ValueError("Development set must contain at least 20 labeled questions")
     if len({q["dev_id"] for q in questions}) != len(questions):
@@ -84,17 +100,17 @@ def main() -> int:
             start, end = int(m.group(2)), int(m.group(3) or m.group(2))
             locked_refs.update((src, p) for p in range(start, end + 1))
     for q in questions:
-        key = (q["source_id"], int(q["relevant_pages"]))
-        if key in locked_refs:
-            raise ValueError(f"Development page overlaps locked evaluation: {q['dev_id']} {key}")
+        overlap = parse_qrels(q) & locked_refs
+        if overlap:
+            raise ValueError(f"Development page overlaps locked evaluation: {q['dev_id']} {sorted(overlap)}")
     with V2_QUESTIONS.open(encoding="utf-8-sig", newline="") as f:
         v2_rows = list(csv.DictReader(f))
-    dev_pages = {(q["source_id"], int(q["relevant_pages"])) for q in questions}
+    dev_pages = set().union(*(parse_qrels(q) for q in questions))
     for q in v2_rows:
         if q["split"] == "test":
-            key = (q["source_id"], int(q["relevant_pages"]))
-            if key in dev_pages or key in locked_refs:
-                raise ValueError(f"V2 held-out page overlaps development or v1 locked pages: {q['question_id']} {key}")
+            overlap = parse_qrels(q) & (dev_pages | locked_refs)
+            if overlap:
+                raise ValueError(f"V2 held-out page overlaps development or v1 locked pages: {q['question_id']} {sorted(overlap)}")
 
     tfidf_index = load_index(TFIDF)
     graph = load_graph(GRAPH)
@@ -117,7 +133,7 @@ def main() -> int:
             per_q = []
             for c, bm in zip(caches, bm25_rows):
                 rank = fused_rank(bm, c["graph"], graph_weight)
-                per_q.append(score(rank, c["q"]["source_id"], int(c["q"]["relevant_pages"])))
+                per_q.append(score(rank, parse_qrels(c["q"])))
             metrics = {m: mean(row[m] for row in per_q) for m in ("P@5", "Recall@5", "MRR")}
             trials.append({"k1": k1, "b": b, "graph_weight": graph_weight, **metrics})
 
@@ -135,19 +151,20 @@ def main() -> int:
         tf_rank = page_rank(c["tfidf"], "vector_score")
         fixed_rank = page_rank(fixed_rows, "vector_score")
         selected_rank = fused_rank(chosen_rows, c["graph"], best["graph_weight"])
-        values = [score(tf_rank, q["source_id"], int(q["relevant_pages"])), score(fixed_rank, q["source_id"], int(q["relevant_pages"])), score(selected_rank, q["source_id"], int(q["relevant_pages"]))]
+        qrels = parse_qrels(q)
+        values = [score(tf_rank, qrels), score(fixed_rank, qrels), score(selected_rank, qrels)]
         for key, val in zip(baselines, values):
             baselines[key].append(val)
-        details.append({"dev_id": q["dev_id"], "question": q["question"], "gold_page": f"{q['source_id']} p.{q['relevant_pages']}", **{f"{name}_{m}": v[m] for name, v in zip(baselines, values) for m in v}, "TFIDF_top5": "; ".join(f"{s} p.{p}" for s,p,_ in tf_rank[:K]), "BM25_top5": "; ".join(f"{s} p.{p}" for s,p,_ in fixed_rank[:K]), "selected_top5": "; ".join(f"{s} p.{p}" for s,p,_ in selected_rank[:K])})
+        details.append({"dev_id": q["dev_id"], "question": q["question"], "relevant_pages": "; ".join(f"{s}:p.{p}" for s,p in sorted(qrels)), "annotation_status": q.get("annotation_status", "AI-assisted; incomplete"), **{f"{name}_{m}": v[m] for name, v in zip(baselines, values) for m in v}, "TFIDF_top5": "; ".join(f"{s} p.{p}" for s,p,_ in tf_rank[:K]), "BM25_top5": "; ".join(f"{s} p.{p}" for s,p,_ in fixed_rank[:K]), "selected_top5": "; ".join(f"{s} p.{p}" for s,p,_ in selected_rank[:K])})
 
     with DETAILS.open("w", encoding="utf-8", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=list(details[0]))
         writer.writeheader(); writer.writerows(details)
     summary = {name: {m: mean(row[m] for row in rows) for m in ("P@5", "Recall@5", "MRR")} for name, rows in baselines.items()}
-    md = ["# Retrieval development evaluation", "", f"Development set: {len(questions)} AI-drafted, page-labeled questions over pages outside v1 and v2 held-out qrels. Labels are target-page annotations from the fixed report text; they are not human coach judgments.", "", "## Baseline and selected development metrics", "", "| Method | P@5 | Recall@5 | MRR |", "|---|---:|---:|---:|"]
+    md = ["# Retrieval development evaluation", "", f"Development set: {len(questions)} AI-drafted questions with source-qualified, multi-page qrels outside v1 and v2 held-out qrels. Labels are AI-assisted candidate-page judgments from the fixed report text; they are incomplete and not human coach judgments.", "", "P@5 counts relevant pages in the top five divided by five; Recall@5 counts retrieved relevant pages divided by all labeled relevant pages; MRR uses the first relevant page.", "", "## Baseline and selected development metrics", "", "| Method | P@5 | Recall@5 | MRR |", "|---|---:|---:|---:|"]
     for key, label in (("TFIDF", "TF-IDF"), ("BM25_fixed", "BM25 (k1=1.5, b=0.75)"), ("selected", "Selected BM25 + graph setting")):
         x=summary[key]; md.append(f"| {label} | {x['P@5']:.3f} | {x['Recall@5']:.3f} | {x['MRR']:.3f} |")
-    md += ["", "## Selected parameters", "", f"- BM25 `k1={best['k1']}`, `b={best['b']}`; graph weight `β={best['graph_weight']:.1f}` with lexical weight `1−β`.", "- Selection criterion fixed before tuning: maximize development MRR, then Recall@5, then P@5; ties prefer less graph contribution and values nearer the conventional BM25 baseline.", f"- Grid searched {len(trials)} combinations over `k1={tuple(k for k in (0.8,1.2,1.5,2.0))}`, `b={tuple(b for b in (0.25,0.5,0.75,1.0))}`, and graph weights `{graph_weights}`.", "- This is development-only tuning. Neither v1's 12 questions nor the 20 v2 held-out questions were used to select parameters.", "", "## Limitations", "", "- Queries were drafted from the fixed reports and annotated with a target page; this is not independent human relevance adjudication and may favor report-specific phrasing.", "- Each item has one target page, although other pages may be relevant. The labels are useful for controlled development but incomplete.", "- On the v2 held-out set, selected BM25+G has slightly higher MRR than fixed BM25 but lower P@5 and Recall@5; this is not a clear overall gain. Do not tune against v2 held-out questions.", "", "Per-question ranks are in `retrieval_development_per_question.csv`.", ""]
+    md += ["", "## Selected parameters", "", f"- BM25 `k1={best['k1']}`, `b={best['b']}`; graph weight `β={best['graph_weight']:.1f}` with lexical weight `1−β`.", "- Selection criterion fixed before tuning: maximize development MRR, then Recall@5, then P@5; ties prefer less graph contribution and values nearer the conventional BM25 baseline.", f"- Grid searched {len(trials)} combinations over `k1={tuple(k for k in (0.8,1.2,1.5,2.0))}`, `b={tuple(b for b in (0.25,0.5,0.75,1.0))}`, and graph weights `{graph_weights}`.", "- This is development-only tuning. Neither v1's 12 questions nor the 20 v2 held-out questions were used to select parameters.", "", "## Limitations", "", "- Labels are AI-assisted candidate-page judgments, not exhaustive page-by-page adjudication and not coach review; omitted relevant pages remain possible.", "- The original target page remains relevant. Additional pages were included only when their report text directly addresses the question; retrieval rank alone is not a relevance judgment.", "- On the v2 held-out set, selected BM25+G has slightly higher MRR than fixed BM25 but lower P@5 and Recall@5; this is not a clear overall gain. Do not tune against v2 held-out questions.", "", "Per-question ranks and qrel provenance are in `retrieval_development_per_question.csv`.", "", "## Human review and semantic retrieval status", "", "The current multi-page qrels remain AI-assisted and incomplete. `retrieval_human_review_packet_v1.csv` contains 768 blinded development question-page candidates with full page text and blank judgment fields. It draws candidates from TF-IDF, fixed BM25, graph retrieval, and current labels, but is not exhaustive; reviewers should add relevant pages missed by the pool. See `retrieval_human_review_protocol.md` for rating, independent review, adjudication, and agreement instructions.", "", "Dense retrieval has not been evaluated. `all-MiniLM-L6-v2` files are cached locally, but neither project Python environment has an inference runtime. Installing `sentence-transformers` failed because the environment could not resolve `pypi.org`. No lexical proxy is reported as a dense result. The production configuration remains the baseline pending human qrels and a reproducible embedding runtime.", ""]
     OUT.write_text("\n".join(md), encoding="utf-8")
     print(f"Development questions: {len(questions)}; non-overlap guard: passed")
     print(f"Selected k1={best['k1']} b={best['b']} graph_weight={best['graph_weight']}")
