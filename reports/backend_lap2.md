@@ -18,25 +18,81 @@ Do not tune retrieval against any v1/v2 held-out questions. Do not make claims o
 
 ## Part 1 — Service foundation checklist
 
-- [ ] Inspect existing module interfaces and choose a small service implementation compatible with the repository; do not replace or refactor the current retrieval modules.
-- [ ] Add the application entry point, configuration, health route, JSON request validation, and `/api/v1/ask` route.
-- [ ] Map current retrieval/report outputs into the exact shared response schema.
-- [ ] Return explicit abstention when no adequately supported tactical passage is available.
-- [ ] Keep UEFA passages, recorded event evidence, historical examples, and provenance in separate fields.
-- [ ] Add focused backend checks under `backend/api/` for malformed input, covered/abstained cases, citation metadata, and same-match exclusion.
-- [ ] Record startup and local verification steps in this brief.
-- [ ] Review the diff and ensure every changed path is within the allowlist before committing Part 1.
+- [x] Inspect existing module interfaces and choose a small service implementation compatible with the repository; do not replace or refactor the current retrieval modules.
+- [x] Add the application entry point, configuration, health route, JSON request validation, and `/api/v1/ask` route.
+- [x] Map current retrieval/report outputs into the exact shared response schema.
+- [x] Return explicit abstention when no adequately supported tactical passage is available.
+- [x] Keep UEFA passages, recorded event evidence, historical examples, and provenance in separate fields.
+- [x] Add focused backend checks under `backend/api/` for malformed input, covered/abstained cases, citation metadata, and same-match exclusion.
+- [x] Record startup and local verification steps in this brief.
+- [x] Review the diff and ensure every changed path is within the allowlist before committing Part 1.
 
 ## Part 2 — Reliability and provenance checklist
 
-- [ ] Validate returned evidence IDs, page numbers, and source IDs against the fixed report chunk index.
-- [ ] Preserve exact source excerpts and the provenance trace.
-- [ ] Enforce historical match exclusion whenever H is used; skip H when the query event cannot be grounded.
-- [ ] Represent weak/no evidence as abstention instead of returning arbitrary top-ranked passages as support.
-- [ ] Return structured errors with request IDs and no stack traces or sensitive internal details.
-- [ ] Document source coverage, missing-video limitations, and any unavailable evidence channels.
-- [ ] Verify the response shape for a supported question, not-covered question, invalid input, and service failure.
-- [ ] Review the diff for scope, update this brief, and create a local commit containing only allowlisted backend changes.
+- [x] Validate returned evidence IDs, page numbers, and source IDs against the fixed report chunk index.
+- [x] Preserve exact source excerpts and the provenance trace.
+- [x] Enforce historical match exclusion whenever H is used; skip H when the query event cannot be grounded.
+- [x] Represent weak/no evidence as abstention instead of returning arbitrary top-ranked passages as support.
+- [x] Return structured errors with request IDs and no stack traces or sensitive internal details.
+- [x] Document source coverage, missing-video limitations, and any unavailable evidence channels.
+- [x] Verify the response shape for a supported question, not-covered question, invalid input, and service failure.
+- [x] Review the diff for scope, update this brief, and create a local commit containing only allowlisted backend changes.
+
+## Startup and local verification steps
+
+### Requirements installation
+```bash
+pip install -r requirements-api.txt
+```
+
+### Running the server locally
+```bash
+# Start server using the entrypoint (default on http://127.0.0.1:8000)
+python backend/api/main.py --host 127.0.0.1 --port 8000
+
+# Or using uvicorn directly:
+uvicorn backend.api.main:app --host 127.0.0.1 --port 8000
+```
+
+### Running test suite
+```bash
+# Run all 13 focused API and contract tests
+pytest backend/api/test_api.py -v
+```
+
+### Running end-to-end verification script
+```bash
+# Exercises health, supported query, same-match exclusion, abstention, 400 validation error, and 500 service error
+python backend/api/verify_service.py
+```
+
+### Example curl requests
+
+1. Health check:
+```bash
+curl -X GET http://127.0.0.1:8000/health
+```
+
+2. Supported tactical question:
+```bash
+curl -X POST http://127.0.0.1:8000/api/v1/ask \
+  -H "Content-Type: application/json" \
+  -d '{"question": "How should a team respond after winning the ball?"}'
+```
+
+3. Grounded query with match and trigger event context:
+```bash
+curl -X POST http://127.0.0.1:8000/api/v1/ask \
+  -H "Content-Type: application/json" \
+  -d '{"question": "Sevilla intercepted Barcelona’s incomplete pass and then played to Diego Perotti. Should the first action prioritize securing possession or countering forward?", "context": {"match_id": "69289", "trigger_event_id": "a8741e2f-3aff-4a73-aacb-1ae683e6a2a1"}}'
+```
+
+4. Out-of-scope / not-covered question (abstention):
+```bash
+curl -X POST http://127.0.0.1:8000/api/v1/ask \
+  -H "Content-Type: application/json" \
+  -d '{"question": "Arsenal’s pass from Eduardo toward Fredrik Ljungberg is recorded after a blocked shot and goalkeeper action, and the pass outcome is marked incomplete. What should a coach verify about the possession/restart before judging the pass choice? Given the actual setup, what safer or more progressive option was available?", "context": {"match_id": "3749448", "trigger_event_id": "6cfd4b03-ddc9-4e64-8af3-d743540aea3f"}}'
+```
 
 ## Copy-ready backend prompt
 
@@ -48,7 +104,8 @@ Do not tune retrieval against any v1/v2 held-out questions. Do not make claims o
 
 ## Lap 2 status
 
-- [ ] Part 1 service foundation complete.
-- [ ] Part 2 reliability and provenance complete.
-- [ ] API contract implemented without unapproved changes.
-- [ ] Scope-reviewed local commit recorded.
+- [x] Part 1 service foundation complete.
+- [x] Part 2 reliability and provenance complete.
+- [x] API contract implemented without unapproved changes.
+- [x] Scope-reviewed local commit recorded.
+
