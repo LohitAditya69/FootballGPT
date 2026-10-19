@@ -122,6 +122,15 @@ The fusion rule is `S = αV + βG + γH`. `backend/retrieval/ranking_config.json
 
 Step 3 is implemented in `backend/retrieval/historical_retriever.py`. `scripts/sample_train_situations.py` streamed the full 1,759,328-row train split and retained up to three deterministic hash-selected cases per match: 10,023 cases across 3,341 training matches. The compact, compressed candidate index is `backend/data/historical_train_sample.jsonl.gz`. It compares event type, play pattern, location, outcome, pressure, and counterpress metadata when available. Similarity weights are fixed at event type .40, play pattern .15, location .25, outcome .10, pressure .05, and counterpress .05, renormalized over fields present in both records. Team identity is excluded. Every H call requires `exclude_match_id`; candidates from that match are removed. This is a bounded pilot index, not all train rows.
 
+For the next H-retrieval development step, `scripts/create_historical_dev_split.py`
+creates a deterministic match-disjoint partition within the original training
+matches: 334 matches for development queries and 3,007 for candidate retrieval.
+The source train/test files remain untouched; the original test split was not
+read. The split manifest is `reports/historical_retrieval_match_split_v1.json`
+and its rules are documented in `reports/historical_retrieval_development_split.md`.
+The current all-training-match sample must be filtered by the candidate IDs
+before it is used as the development index.
+
 ## Data already present
 
 The local StatsBomb Open Data snapshot is in `archive (3)/` with the standard
