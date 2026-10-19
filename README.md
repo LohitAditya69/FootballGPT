@@ -133,9 +133,12 @@ before it is used as the development index. `scripts/sample_historical_dev_candi
 now produces nested candidate samples of 3, 10, and 25 cases per candidate
 match under `/private/tmp/footballgpt_historical_candidates_v1/`; they cover
 all 3,007 candidate matches and total 9,021, 30,070, and 75,175 records. The
-sample-size comparison measures coverage and storage only. Retrieval quality
-must be evaluated after event-similarity criteria and development queries are
-defined; do not switch to a full candidate index before that evidence exists.
+sample-size comparison measures coverage and storage only. A fixed,
+project-defined metadata-similarity rubric is now recorded in
+`reports/historical_retrieval_development_split.md`; it is a proxy, not
+coach-judged tactical relevance. H retrieval metrics should compare all sample
+sizes against that same relevance set and query set. Do not switch to a full
+candidate index before those results show a benefit.
 
 ## Data already present
 
