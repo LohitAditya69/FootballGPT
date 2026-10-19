@@ -101,6 +101,15 @@ The manifest at `backend/data/retrieval_graph_manifest.json` records input and g
 
 Retrieval development and held-out results are in `reports/retrieval_development_evaluation.md`, `reports/retrieval_evaluation.md` (v1), and `reports/retrieval_v2_heldout_evaluation.md` (20 new held-out questions); per-question tables accompany the reports. Benchmark v2 adds 20 development and 20 held-out questions across all five UEFA reports, with page-disjoint splits. Tuning on 42 development questions selected BM25 `k1=0.8`, `b=0.5`, and a 0.9:0.1 lexical-to-graph ratio. On the new 20-question held-out set, this scored P@5 0.080, Recall@5 0.400, MRR 0.292, versus fixed BM25 at 0.090, 0.450, 0.275; TF-IDF scored 0.090, 0.450, 0.283. The selected method only had slightly higher MRR, while the lexical baselines retrieved more target pages in the top five. The earlier v1 test is retained as a separate version; its selected settings are archived in `backend/retrieval/ranking_config_v1.json`. H has no judged relevance, and not-covered v1 questions have no calibrated abstention rule. All are pilot diagnostics.
 
+Development-only chunk-size and reciprocal-rank-fusion diagnostics did not
+show a consistent overall gain, so the current chunks and ranking weights
+remain the baseline. The observed misses suggest a semantic matching gap:
+many questions describe tactical situations in words that differ from the
+reports. A dense embedding retriever is the next candidate to compare on the
+development set. It is not implemented yet; the project environment currently
+has no embedding runtime or cached model. See the diagnostic details and
+evaluation guardrails in `reports/retrieval_development_evaluation.md`.
+
 Benchmark v2 questions and page annotations are in `reports/retrieval_benchmark_v2_questions.csv`. Validate the page/split lock with `python3 scripts/validate_retrieval_benchmark_v2.py`, tune only on development pages with `python3 scripts/tune_retrieval_on_dev.py`, build the selected BM25 index with `python3 scripts/build_bm25_index.py`, and run the new held-out evaluation once with `python3 scripts/evaluate_retrieval_v2_test.py`. Do not use the held-out results to retune.
 
 V uses `backend/retrieval/vector_retriever.py`; rebuild TF-IDF with `python3 scripts/build_vector_index.py` or the development-selected BM25 index with `python3 scripts/build_bm25_index.py`. Both methods use the same page-bounded chunks and tokenizer and are sparse lexical retrieval, not dense neural embeddings; semantic paraphrase matching remains a limitation. Indexes are `backend/data/uefa_tfidf_index.json` and `backend/data/uefa_bm25_index.json`.
