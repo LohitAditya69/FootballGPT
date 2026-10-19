@@ -35,12 +35,14 @@
 
 ## Lap 2 — Backend
 
+Backend scope, checklist, and copy-ready prompt: [`backend_lap2.md`](backend_lap2.md). Shared read-only API contract: [`product_api_contract_v1.md`](product_api_contract_v1.md).
+
 ### 2A. Agree and freeze the interface contract
 
-- [ ] Define request fields: question and any supported match/event context.
-- [ ] Define response fields: answer/evidence brief, cited report passages, recorded event evidence, provenance, abstention status, and structured errors.
-- [ ] Define citation identity and page numbering once so backend and frontend use the same form.
-- [ ] Save the contract in Markdown or an API schema; treat it as the source of truth for Lap 2 and Lap 3.
+- [x] Define request fields: question and optional match/event context.
+- [x] Define response fields: evidence brief, citations, recorded event evidence, historical examples, provenance, abstention status, limitations, and structured errors.
+- [x] Define citation identity and page numbering once so backend and frontend use the same form.
+- [x] Save the shared contract in `product_api_contract_v1.md`; treat it as read-only for both implementation laps.
 
 ### 2B. Backend — Part 1: service foundation
 
@@ -72,6 +74,8 @@
 - [ ] Update README and workflow status, then commit Lap 2 before starting Lap 3.
 
 ## Lap 3 — Frontend
+
+Frontend scope, checklist, and copy-ready prompt: [`frontend_lap3.md`](frontend_lap3.md). Work only in a separate branch/worktree from Lap 2 and treat the shared API contract as read-only.
 
 ### 3A. Frontend — Part 1: interface foundation
 
@@ -110,11 +114,13 @@
 |---|---|---|---|
 | Workflow plan | Pull attempted on 2026-10-19 and retried before Lap 3 split; both blocked because `github.com` could not be resolved | `8d2bc6c` | Local workflow plan committed; one commit ahead of `origin/codex/pipeline-laps`. Retry pull/push when network access is available. |
 | Lap 1 reliability review | Pull attempted at Lap 1 start; blocked because `github.com` could not be resolved | Lap 1 completion commit (local) | Review results are in `reliability_review_lap1.md`; preserve held-out data and address retrieval alignment using development data. |
+| Backend/frontend work briefs | Pull attempted before drafting; blocked because `github.com` could not be resolved | Planning docs commit (local) | Separate prompts and edit allowlists are in `backend_lap2.md` and `frontend_lap3.md`; shared contract is in `product_api_contract_v1.md`. |
 
 ## Current status
 
 - [x] Workflow and lap checklist written.
 - [x] Lap 1 reliability review; findings and remaining risks are recorded in `reports/reliability_review_lap1.md`.
+- [x] Separate backend and frontend work briefs, prompts, file allowlists, and shared API contract drafted.
 - [ ] Lap 2 backend build and versioned API contract.
 - [ ] Lap 3 frontend build and integration.
 - [ ] Git remote synchronization; pull remains blocked by DNS/network availability.
