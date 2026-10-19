@@ -56,7 +56,7 @@ Open `reports/generated/index.html` to browse each question, its verbatim UEFA p
 
 See `reports/project_status_and_contributions.md` for the completed pipeline stages, remaining human-review work, pilot limitations, and contribution summary based on Git history.
 
-The next work is staged in `reports/reliability_and_product_workflow.md`: first audit benchmark and generated-evidence reliability, then build the backend and frontend in two coordinated parts with integration checkpoints and a documented Git checkpoint after each lap.
+The next work is staged in `reports/reliability_and_product_workflow.md`: Lap 1 audits benchmark and generated-evidence reliability, Lap 2 builds the backend and freezes its API contract, and Lap 3 builds the frontend against that contract. Each product lap has two parts and integration checkpoints.
 
 ## Tactical text seed corpus
 

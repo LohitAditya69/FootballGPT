@@ -4,7 +4,7 @@
 
 - Keep the existing v1 and v2 held-out questions separate from development data. Do not tune retrieval, prompts, or thresholds against held-out results.
 - Treat the frozen UEFA reports and recorded StatsBomb events as the factual reference. A source audit checks whether claims and citations match those records; it does not claim live coach approval or unseen video context.
-- Build backend and frontend against one written API contract. Work on each side in two parts, with an integration checkpoint between the parts.
+- Build backend and frontend against one written API contract. Keep backend work in Lap 2 and frontend work in Lap 3; each gets two parts and an integration checkpoint.
 - At the start of each lap, check the Git branch and working tree and pull incoming changes when the remote is reachable. At the end, update this file and the relevant README/status docs, run the lap's verification, and commit that lap before starting the next.
 - Never overwrite or discard another person's changes. If a pull conflicts or the working tree is not clean, stop and reconcile before editing.
 
@@ -31,16 +31,16 @@
 
 - [ ] Reliability report lists reviewed artifacts, checks performed, findings, and unresolved limitations.
 - [ ] No held-out labels or scores were changed or used for tuning.
-- [ ] The API fields needed to expose citations, event evidence, abstention, and provenance are agreed for Lap 2.
+- [ ] The API fields needed to expose citations, event evidence, abstention, and provenance are agreed and recorded for Lap 2.
 
-## Lap 2 — Backend and frontend, coordinated side by side
+## Lap 2 — Backend
 
-### 2A. Agree the interface before parallel implementation
+### 2A. Agree and freeze the interface contract
 
 - [ ] Define request fields: question and any supported match/event context.
 - [ ] Define response fields: answer/evidence brief, cited report passages, recorded event evidence, provenance, abstention status, and structured errors.
 - [ ] Define citation identity and page numbering once so backend and frontend use the same form.
-- [ ] Save the contract in Markdown or an API schema and review it before either side depends on it.
+- [ ] Save the contract in Markdown or an API schema; treat it as the source of truth for Lap 2 and Lap 3.
 
 ### 2B. Backend — Part 1: service foundation
 
@@ -50,21 +50,14 @@
 - [ ] Return an explicit abstention when no supported evidence is available.
 - [ ] Add focused backend checks for malformed input, missing evidence, citations, and match-exclusion behavior.
 
-### 2C. Frontend — Part 1: interface foundation
-
-- [ ] Add the question-entry and result-view shell using the agreed contract and sample responses.
-- [ ] Show loading, empty, error, and abstention states.
-- [ ] Make report citations and recorded match evidence visually distinct.
-- [ ] Check the layout at desktop and narrow viewport sizes.
-
-### 2D. Integration checkpoint 1
+### 2C. Backend integration checkpoint
 
 - [ ] Run the backend locally and confirm its response matches the contract.
-- [ ] Connect the frontend to the local service and verify one supported question and one abstention.
-- [ ] Resolve contract mismatches before starting the second parts.
-- [ ] Update docs and commit the completed first parts as a checkpoint.
+- [ ] Exercise one supported request and one abstention through the service interface or a contract client.
+- [ ] Resolve contract mismatches before completing backend reliability work.
+- [ ] Update docs and commit the backend foundation checkpoint.
 
-### 2E. Backend — Part 2: reliability and provenance
+### 2D. Backend — Part 2: reliability and provenance
 
 - [ ] Validate citation IDs and page references against the fixed report index before returning them.
 - [ ] Preserve source excerpts and provenance links in the response.
@@ -72,7 +65,30 @@
 - [ ] Record useful errors and request IDs without logging unnecessary sensitive input.
 - [ ] Document any fallback behavior and source coverage limits.
 
-### 2F. Frontend — Part 2: live evidence and provenance
+### 2E. Backend exit checkpoint
+
+- [ ] Verify final API responses for covered, not-covered, invalid-input, and failure cases.
+- [ ] Freeze/version the API contract and document local startup instructions for the frontend lap.
+- [ ] Update README and workflow status, then commit Lap 2 before starting Lap 3.
+
+## Lap 3 — Frontend
+
+### 3A. Frontend — Part 1: interface foundation
+
+- [ ] Read the versioned Lap 2 API contract and build the question-entry and result-view shell using sample responses.
+- [ ] Show loading, empty, error, and abstention states.
+- [ ] Make report citations and recorded match evidence visually distinct.
+- [ ] Check the layout at desktop and narrow viewport sizes.
+- [ ] Commit the interface foundation before connecting live responses.
+
+### 3B. Frontend integration checkpoint 1
+
+- [ ] Start the backend using its documented instructions and connect the frontend to it.
+- [ ] Verify one supported question and one abstention against the actual API.
+- [ ] Resolve contract mismatches with a versioned backend contract change before relying on new fields.
+- [ ] Update docs and commit the first integration checkpoint.
+
+### 3C. Frontend — Part 2: live evidence and provenance
 
 - [ ] Connect the question form to the live backend response.
 - [ ] Render clickable report/page citations and the exact supporting excerpts.
@@ -80,7 +96,7 @@
 - [ ] Expose the provenance path in a readable expandable view.
 - [ ] Display abstention and coverage limits without implying unsupported recommendations.
 
-### 2G. Integration checkpoint 2 and delivery review
+### 3D. Integration checkpoint 2 and delivery review
 
 - [ ] Run an end-to-end flow from question entry through API response to cited evidence display.
 - [ ] Check covered and not-covered cases, service errors, and missing/invalid citation behavior.
@@ -92,11 +108,12 @@
 
 | Checkpoint | Pull status | Commit | Notes |
 |---|---|---|---|
-| Workflow plan | Pull attempted on 2026-10-19; blocked because `github.com` could not be resolved in the current environment | Pending | Working tree was clean before the pull attempt; retry before Lap 1 work when network access is available. |
+| Workflow plan | Pull attempted on 2026-10-19 and retried before Lap 3 split; both blocked because `github.com` could not be resolved | `8d2bc6c` | Local workflow plan committed; one commit ahead of `origin/codex/pipeline-laps`. Retry pull/push when network access is available. |
 
 ## Current status
 
 - [x] Workflow and lap checklist written.
 - [ ] Lap 1 reliability review.
-- [ ] Lap 2 interface contract and backend/frontend build.
-- [ ] Git pull and commit checkpoint after the plan; pull is currently blocked by DNS/network availability.
+- [ ] Lap 2 backend build and versioned API contract.
+- [ ] Lap 3 frontend build and integration.
+- [ ] Git remote synchronization; pull remains blocked by DNS/network availability.
