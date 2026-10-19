@@ -133,12 +133,15 @@ before it is used as the development index. `scripts/sample_historical_dev_candi
 now produces nested candidate samples of 3, 10, and 25 cases per candidate
 match under `/private/tmp/footballgpt_historical_candidates_v1/`; they cover
 all 3,007 candidate matches and total 9,021, 30,070, and 75,175 records. The
-sample-size comparison measures coverage and storage only. A fixed,
-project-defined metadata-similarity rubric is now recorded in
-`reports/historical_retrieval_development_split.md`; it is a proxy, not
-coach-judged tactical relevance. H retrieval metrics should compare all sample
-sizes against that same relevance set and query set. Do not switch to a full
-candidate index before those results show a benefit.
+sample-size comparison measures coverage and storage. A development-only
+comparison of the unchanged H ranker against a fixed metadata-similarity proxy
+is also documented there: MRR@5 reached 1.000 at each size, while Recall@5
+rose from 0.010 to 0.014. These near-ceiling results are self-confirming
+because the proxy labels and ranker share event-type, play-pattern, and
+location features. They do not show tactical retrieval quality and must not
+be used to choose production index size or tune H weights. The 25-per-match
+sample remains a reference pool for this diagnostic, not the complete set of
+training cases.
 
 ## Data already present
 
