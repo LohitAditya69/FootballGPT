@@ -129,7 +129,13 @@ The source train/test files remain untouched; the original test split was not
 read. The split manifest is `reports/historical_retrieval_match_split_v1.json`
 and its rules are documented in `reports/historical_retrieval_development_split.md`.
 The current all-training-match sample must be filtered by the candidate IDs
-before it is used as the development index.
+before it is used as the development index. `scripts/sample_historical_dev_candidates.py`
+now produces nested candidate samples of 3, 10, and 25 cases per candidate
+match under `/private/tmp/footballgpt_historical_candidates_v1/`; they cover
+all 3,007 candidate matches and total 9,021, 30,070, and 75,175 records. The
+sample-size comparison measures coverage and storage only. Retrieval quality
+must be evaluated after event-similarity criteria and development queries are
+defined; do not switch to a full candidate index before that evidence exists.
 
 ## Data already present
 

@@ -48,3 +48,32 @@ and its own evaluation record.
 - This split provides query/candidate separation, not relevance labels. The
   next step must define and document the event-similarity criteria before
   reporting H metrics.
+
+## Candidate-index size comparison
+
+`scripts/sample_historical_dev_candidates.py` streams the original training
+file and writes only cases from the 3,007 candidate matches. It leaves the
+source JSONL unchanged and defaults to `/private/tmp/footballgpt_historical_candidates_v1/`
+so generated match data is not accidentally added to Git. Run it with:
+
+```bash
+python3 scripts/sample_historical_dev_candidates.py
+```
+
+The deterministic samples use one hash ordering, so they are nested:
+
+| Maximum cases per candidate match | Cases | Matches represented | Compressed size |
+|---:|---:|---:|---:|
+| 3 | 9,021 | 3,007 | 498,233 bytes |
+| 10 | 30,070 | 3,007 | 1,585,009 bytes |
+| 25 | 75,175 | 3,007 | 3,821,072 bytes |
+
+The candidate case corpus contains five recorded trigger event types, all of
+which appear in each tier: Pressure, Pass, Shot, Interception, and
+Substitution. The
+25-per-match sample is still small compared with all candidate cases, so a
+full candidate index is technically possible but should wait until the
+development evaluation shows whether broader sampling improves retrieval.
+These counts and file sizes establish coverage and storage cost only; they do
+not show that the larger sample retrieves more relevant situations. The
+generated sample summary records SHA-256 hashes for the three local files.
