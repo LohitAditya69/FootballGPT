@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#101d19" />
+    <meta name="description" content="Explore page-cited football analysis with source and event provenance." />
+    <title>FootballGPT — Evidence room</title>
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <a class="brand" href="#main" aria-label="FootballGPT home">
+          <span class="brand-mark" aria-hidden="true">FG</span>
+          <span>Football<span class="brand-light">GPT</span></span>
+        </a>
+        <div class="topbar-meta"><span class="live-dot" aria-hidden="true"></span> Evidence workspace <span class="topbar-divider">/</span> API v1</div>
+      </header>
+
+      <main id="main">
+        <section class="intro" aria-labelledby="page-title">
+          <p class="eyebrow">MATCH ANALYSIS · SOURCE FIRST</p>
+          <h1 id="page-title">A clearer view<br /><em>of the game.</em></h1>
+          <p class="intro-copy">Ask a tactical question. Review the returned source passages, recorded events, and provenance in their own context.</p>
+          <div class="intro-note"><span class="note-icon" aria-hidden="true">i</span><span>Evidence for review, not a coach recommendation. Event records cannot show off-ball movement or unseen video context.</span></div>
+        </section>
+
+        <div class="workspace">
+          <section class="question-panel panel" aria-labelledby="question-title">
+            <div class="panel-heading">
+              <div class="step-number">01</div>
+              <div><p class="eyebrow">YOUR QUESTION</p><h2 id="question-title">Set the moment</h2></div>
+            </div>
+
+            <form id="ask-form" novalidate>
+              <label class="field-label" for="question">What would you like to understand?</label>
+              <textarea id="question" name="question" rows="5" placeholder="For example: How should a team respond after winning the ball?" aria-describedby="question-help question-error" required></textarea>
+              <div class="field-meta"><span id="question-help">Keep it focused. 1–2,000 characters.</span><span id="char-count">0 / 2,000</span></div>
+              <p id="question-error" class="field-error" aria-live="polite"></p>
+
+              <div class="context-divider"><span>OPTIONAL MATCH CONTEXT</span><span class="divider-line"></span></div>
+              <div class="context-fields">
+                <div class="field-group"><label class="field-label" for="match-id">Match ID</label><input id="match-id" name="match_id" type="text" autocomplete="off" placeholder="StatsBomb match ID" /></div>
+                <div class="field-group"><label class="field-label" for="trigger-event-id">Trigger event ID</label><input id="trigger-event-id" name="trigger_event_id" type="text" autocomplete="off" placeholder="StatsBomb event UUID" /></div>
+              </div>
+
+              <div class="field-group api-field">
+                <label class="field-label" for="api-base-url">API base URL</label>
+                <input id="api-base-url" name="api_base_url" type="url" inputmode="url" spellcheck="false" aria-describedby="api-help" />
+                <span id="api-help" class="field-hint">The app appends <code>/api/v1/ask</code>. Saved in this browser only.</span>
+              </div>
+
+              <button id="submit-button" class="submit-button" type="submit">
+                <span class="button-label">Review evidence</span><span class="button-arrow" aria-hidden="true">↗</span>
+              </button>
+              <p id="request-status" class="request-status" role="status" aria-live="polite"></p>
+            </form>
+            <div id="preview-tools" class="preview-tools" hidden></div>
+          </section>
+
+          <section id="results" class="results-panel panel" aria-labelledby="results-title" aria-live="polite" aria-busy="false">
+            <div class="panel-heading result-heading">
+              <div class="step-number">02</div>
+              <div><p class="eyebrow">RESPONSE</p><h2 id="results-title">Evidence review</h2></div>
+              <span id="response-badge" class="response-badge badge-muted">Waiting</span>
+            </div>
+            <div id="result-content" class="result-content">
+              <div class="empty-state">
+                <div class="pitch-art" aria-hidden="true"><span class="pitch-center"></span><span class="pitch-dot"></span></div>
+                <p class="empty-title">Your review starts here</p>
+                <p class="empty-copy">Submit a question to see the API response, its source material, and any limitations.</p>
+                <span class="empty-footnote">No evidence has been requested yet</span>
+              </div>
+            </div>
+          </section>
+        </div>
+
+        <footer class="page-footer"><span>FootballGPT · Product API v1</span><span>UEFA passages · StatsBomb events · Provenance</span></footer>
+      </main>
+    </div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

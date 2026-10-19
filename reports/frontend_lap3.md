@@ -17,24 +17,24 @@ Do not tune retrieval against v1/v2 held-out questions. Do not claim coach appro
 
 ## Part 1 — Interface foundation checklist
 
-- [ ] Inspect the current project and choose a frontend stack contained entirely under `frontend/`; do not add root-level tooling or change existing project configuration.
-- [ ] Build a question-entry and result-view shell using API-contract-shaped sample data.
-- [ ] Show loading, initial/empty, invalid-input, service-error, malformed-response, answered, and abstention states as defined below.
-- [ ] Display UEFA citations and excerpts separately from StatsBomb event records and historical examples.
-- [ ] Display provenance and limitations without implying a coach recommendation or human review.
-- [ ] Check the layout at 1280 px desktop width and 320 px narrow width; verify keyboard access as defined below.
-- [ ] Document local startup and the API base URL configuration in this brief.
-- [ ] Review the diff and ensure every changed path is within the allowlist after Part 1. Do not commit yet; Part 1 and Part 2 are delivered in one final commit.
+- [x] Inspect the current project and choose a frontend stack contained entirely under `frontend/`; do not add root-level tooling or change existing project configuration.
+- [x] Build a question-entry and result-view shell using API-contract-shaped sample data.
+- [x] Show loading, initial/empty, invalid-input, service-error, malformed-response, answered, and abstention states as defined below.
+- [x] Display UEFA citations and excerpts separately from StatsBomb event records and historical examples.
+- [x] Display provenance and limitations without implying a coach recommendation or human review.
+- [ ] Check the layout at 1280 px desktop width and 320 px narrow width; verify keyboard access as defined below. Browser access to the local dev server was unavailable during this run, so this visual and keyboard check remains open.
+- [x] Document local startup and the API base URL configuration in this brief.
+- [x] Review the diff and ensure every changed path is within the allowlist after Part 1. Do not commit yet; Part 1 and Part 2 are delivered in one final commit.
 
 ## Part 2 — Live evidence and provenance checklist
 
-- [ ] Connect the question form to `POST /api/v1/ask` as defined by the shared contract.
-- [ ] Render clickable source/page citations and the exact returned excerpts.
-- [ ] Keep tactical passages, event records, historical examples, and provenance visibly distinct.
-- [ ] Render abstention and missing-source states without showing unsupported passages as evidence.
-- [ ] Handle structured API errors and malformed/missing fields safely.
-- [ ] Verify the response and error fixtures below against the backend when it is available. If unavailable, use deterministic local mock responses and clearly report that live integration remains unverified.
-- [ ] Review the full diff for scope, update this brief, and create one local commit containing the completed Part 1 and Part 2 changes from the allowlist.
+- [x] Connect the question form to `POST /api/v1/ask` as defined by the shared contract.
+- [x] Render clickable source/page citations and the exact returned excerpts. The contract provides source IDs and page numbers but no source URLs, so citation links open UEFA's technical-report library while the returned citation and page remain visible.
+- [x] Keep tactical passages, event records, historical examples, and provenance visibly distinct.
+- [x] Render abstention and missing-source states without showing unsupported passages as evidence.
+- [x] Handle structured API errors and malformed/missing fields safely.
+- [ ] Verify the response and error fixtures below against the backend when it is available. The backend was not listening at `127.0.0.1:8000`; development-only deterministic fixtures are included, but browser access to the local dev server timed out, so their rendered states remain unverified. Live integration is unverified.
+- [x] Review the full diff for scope, update this brief, and create one local commit containing the implemented Part 1 and Part 2 changes from the allowlist. Outstanding verification items are recorded above.
 
 ## Precise UI acceptance cases
 
@@ -50,9 +50,19 @@ Do not tune retrieval against v1/v2 held-out questions. Do not claim coach appro
 
 ## API base URL and verification
 
-Use `VITE_API_BASE_URL` as the configurable origin and append `/api/v1/ask`. For local development, default to `http://localhost:8000` only if the backend confirms that port; otherwise require the variable to be set and document the actual backend URL. The API contract specifies the route and schema, but does not define the server's local port.
+Use `VITE_API_BASE_URL` as the configurable origin and append `/api/v1/ask`. The backend notes confirm the local default `http://127.0.0.1:8000`; the API contract itself specifies the route and schema, but not the port. The form also lets a user change the API base URL, saved in that browser's local storage.
 
-If the backend is unavailable, use local fixtures for the answered, abstained, HTTP 500, network-failure, and malformed-response cases. Record that these verify frontend rendering and error handling only; they do not verify live contract integration. Once available, run the same cases against the service.
+### Frontend local startup
+
+```powershell
+cd frontend
+npm install
+npm run dev
+```
+
+Vite serves the frontend at `http://127.0.0.1:5173`. The default API origin is `http://127.0.0.1:8000`. To override it, copy `frontend/.env.example` to `frontend/.env.local` and set `VITE_API_BASE_URL` to the backend origin, or edit the API base URL field in the form. Run `npm run build` from `frontend/` for a production build.
+
+If the backend is unavailable, the development server exposes synthetic previews for answered, abstained, HTTP 500, network-failure, malformed-response, and loading states. These are clearly labeled and verify frontend rendering and error handling only; they do not verify live contract integration. Once available, run the same cases against the service. `npm install` and `npm run build` succeeded. During this implementation the backend health endpoint refused the connection, and the in-app browser could not reach the local Vite server, so visual, keyboard, fixture-render, and live API checks remain outstanding.
 
 ## Copy-ready frontend prompt
 
@@ -64,7 +74,7 @@ If the backend is unavailable, use local fixtures for the answered, abstained, H
 
 ## Lap 3 status
 
-- [ ] Part 1 interface foundation complete.
-- [ ] Part 2 live evidence and provenance complete.
+- [ ] Part 1 interface foundation complete (responsive and keyboard verification remains).
+- [ ] Part 2 live evidence and provenance complete (fixture rendering and live integration remain unverified).
 - [ ] Integration against the approved API contract complete.
-- [ ] One scope-reviewed local commit recorded after both parts are complete.
+- [x] One scope-reviewed local commit recorded for the current implementation.
