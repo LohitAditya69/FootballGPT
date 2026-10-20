@@ -310,11 +310,10 @@ function renderPassages(response, preview) {
 }
 
 function renderEventEvidence(eventEvidence) {
-  const block = section('Recorded match events', 'STATSBOMB EVENT WINDOW', 'event-section');
   if (!eventEvidence) {
-    append(block, node('p', 'section-empty', 'No supported event window was returned. Event context is not inferred by the frontend.'));
-    return block;
+    return node('p', 'event-context-note', 'No exact match event was supplied. Similar recorded situations are shown below when available.');
   }
+  const block = section('Recorded match events', 'STATSBOMB EVENT WINDOW', 'event-section');
   const summary = node('div', 'event-summary');
   detailRow('Match', eventEvidence.match_id, summary);
   detailRow('Trigger', eventEvidence.trigger_event_type, summary);
@@ -340,22 +339,25 @@ function renderEventEvidence(eventEvidence) {
 }
 
 function renderHistoricalExamples(examples) {
-  const block = section('Historical event examples', 'SIMILAR RECORDED SITUATIONS', 'historical-section');
+  const block = section('Similar recorded match situations', 'STATSBOMB · SIMILAR RECORDED SITUATIONS', 'historical-section');
   if (!examples.length) {
-    append(block, node('p', 'section-empty', 'No historical event examples were returned for this question.'));
+    append(block, node('p', 'section-empty', 'No comparable recorded situations were found for this question.'));
     return block;
   }
-  append(block, node('p', 'evidence-caveat', 'Historical event records are examples, not UEFA principles or coaching ground truth.'));
+  append(block, node('p', 'evidence-caveat', 'These are similar recorded situations, not events from your match. They do not prove coaching effectiveness or reveal off-ball movement or unseen video context.'));
   for (const example of examples) {
     const card = node('article', 'historical-card');
-    append(card, node('p', 'historical-label', example.label || 'Historical event example'));
+    append(card, node('p', 'historical-label', 'SIMILAR RECORDED SITUATION'));
     const titleParts = [example.team, example.opponent ? `vs ${example.opponent}` : null].filter(Boolean);
-    append(card, node('h4', '', titleParts.length ? titleParts.join(' ') : `Match ${example.match_id || 'record'}`));
+    append(card, node('h4', '', titleParts.length ? titleParts.join(' ') : 'Recorded match situation'));
+    detailRow('Situation label', example.label, card);
     detailRow('Match ID', example.match_id, card);
     detailRow('Timestamp', example.timestamp, card);
     detailRow('Event', example.event_type, card);
     detailRow('Play pattern', example.play_pattern, card);
+    detailRow('Location', example.location, card);
     detailRow('Formation', example.formation, card);
+    detailRow('Score', example.score, card);
     detailRow('Similarity score', example.historical_score, card);
     detailRow('Source split', example.source_split, card);
     block.append(card);
@@ -508,7 +510,7 @@ function renderGraphSvg(nodes, edges, passageTargets, mobile) {
 
 function renderProvenance(provenance, response) {
   const block = section('Evidence provenance', 'RETURNED FOR THIS RESPONSE', 'provenance-section');
-  append(block, node('p', 'provenance-explainer', 'This view shows evidence and context returned for this response, not every retrieval candidate or the full internal retrieval graph. Links describe recorded relationships; they do not prove causality, tactical effectiveness, or coach approval.'));
+  append(block, node('p', 'provenance-explainer', 'This view shows evidence and context returned for this response, not every retrieval candidate or the full internal retrieval graph. Similarity links describe retrieval relationships only; they do not make a historical example proof that a tactic works. No link proves causality or coach approval.'));
   if (provenance === null || provenance === undefined) {
     append(block, node('p', 'section-empty', 'Provenance was not returned for this response. Check the limitations below for the API explanation.'));
     return block;
@@ -764,6 +766,7 @@ function makePreviewTools() {
   const options = [
     ['answered', 'Answered'],
     ['abstained', 'Abstention'],
+    ['similar-empty', 'No similar situations'],
     ['graph-empty', 'Empty provenance'],
     ['graph-missing', 'Missing provenance'],
     ['graph-malformed', 'Malformed provenance'],
@@ -872,6 +875,13 @@ function showPreview(state) {
   const graphState = state.startsWith('graph-') ? state.slice('graph-'.length) : 'connected';
   const responseState = state === 'abstained' ? 'abstained' : 'answered';
   activeResponse = previewResponse(responseState, graphState);
+  if (state === 'similar-empty') {
+    activeResponse.historical_examples = [];
+    activeResponse.event_evidence = null;
+    const omittedNodeIds = new Set(['fixture-only:event', 'fixture-only:history']);
+    activeResponse.provenance.nodes = activeResponse.provenance.nodes.filter((item) => !omittedNodeIds.has(item.id));
+    activeResponse.provenance.edges = activeResponse.provenance.edges.filter((edge) => !omittedNodeIds.has(edge.source) && !omittedNodeIds.has(edge.target));
+  }
   activeResponseIsPreview = true;
   renderResponse(activeResponse, { preview: true });
   setRoute('answer');
