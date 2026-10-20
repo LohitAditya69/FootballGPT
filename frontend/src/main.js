@@ -4,12 +4,12 @@ const API_PATH = '/api/v1/ask';
 const DEFAULT_API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000';
 const UEFA_REPORTS_URL = 'https://www.uefa.com/news-media/publications/technical-reports/';
 const STORE_KEY = 'footballgpt-api-base-url';
+const SESSION_QUESTION_KEY = 'footballgpt-lap5-question';
+const SESSION_RESPONSE_KEY = 'footballgpt-lap5-response';
 let provenanceGraphId = 0;
 
 const form = document.querySelector('#ask-form');
 const questionInput = document.querySelector('#question');
-const matchInput = document.querySelector('#match-id');
-const triggerInput = document.querySelector('#trigger-event-id');
 const apiInput = document.querySelector('#api-base-url');
 const charCount = document.querySelector('#char-count');
 const questionError = document.querySelector('#question-error');
@@ -18,6 +18,15 @@ const submitButton = document.querySelector('#submit-button');
 const results = document.querySelector('#results');
 const resultContent = document.querySelector('#result-content');
 const responseBadge = document.querySelector('#response-badge');
+const main = document.querySelector('#main');
+const intro = document.querySelector('.intro');
+const workspace = document.querySelector('.workspace');
+const loginRoot = document.querySelector('#login-root');
+const routeLabel = document.querySelector('#route-label');
+const requestFeedback = document.querySelector('#request-feedback');
+let activeResponse = null;
+let activeResponseIsPreview = false;
+let activeRoute = 'login';
 
 apiInput.value = localStorage.getItem(STORE_KEY) || DEFAULT_API_BASE;
 
@@ -45,6 +54,20 @@ function showBadge(label, kind = 'muted') {
 }
 
 function showError(title, message, status = '') {
+  if (activeRoute === 'ask') {
+    requestFeedback.hidden = false;
+    requestFeedback.replaceChildren();
+    requestFeedback.setAttribute('role', 'alert');
+    append(requestFeedback, node('strong', '', title));
+    append(requestFeedback, node('p', '', message));
+    const retry = node('button', 'retry-button', 'Try again');
+    retry.type = 'button';
+    retry.addEventListener('click', () => form.requestSubmit());
+    requestFeedback.append(retry);
+    showBadge('Needs attention', 'error');
+    requestStatus.textContent = status || title;
+    return;
+  }
   resultContent.replaceChildren();
   const box = node('div', 'error-state');
   append(box, node('span', 'error-icon', '!'));
@@ -55,6 +78,153 @@ function showError(title, message, status = '') {
   resultContent.append(box);
   showBadge('Needs attention', 'error');
   requestStatus.textContent = status || title;
+}
+
+function setRoute(route, { replace = false } = {}) {
+  const target = `#${route}`;
+  if (location.hash !== target) {
+    if (replace) history.replaceState(null, '', target);
+    else history.pushState(null, '', target);
+  }
+  renderRoute(route);
+}
+
+function storedResponse() {
+  if (activeResponse) return activeResponse;
+  try {
+    const raw = sessionStorage.getItem(SESSION_RESPONSE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return validateResponse(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function readSession(key) {
+  try { return sessionStorage.getItem(key) || ''; } catch { return ''; }
+}
+
+function renderLogin() {
+  loginRoot.replaceChildren();
+  const card = node('div', 'login-card');
+  append(card, node('p', 'eyebrow', 'YOUR FOOTBALL WORKSPACE'));
+  const heading = node('h1', '', 'Welcome back.');
+  heading.id = 'login-title';
+  heading.tabIndex = -1;
+  card.append(heading);
+  append(card, node('p', 'login-copy', 'Sign in to continue to your football evidence workspace.'));
+  const formElement = node('form', 'login-form');
+  formElement.noValidate = true;
+  const emailLabel = node('label', 'field-label', 'Email address');
+  emailLabel.htmlFor = 'login-email';
+  const email = node('input');
+  email.id = 'login-email'; email.type = 'email'; email.autocomplete = 'username'; email.required = true;
+  email.placeholder = 'you@example.com';
+  email.setAttribute('aria-describedby', 'login-error');
+  const passwordLabel = node('label', 'field-label', 'Password');
+  passwordLabel.htmlFor = 'login-password';
+  const passwordRow = node('div', 'password-row');
+  const password = node('input');
+  password.id = 'login-password'; password.type = 'password'; password.autocomplete = 'current-password'; password.required = true;
+  password.setAttribute('aria-describedby', 'login-error');
+  const toggle = node('button', 'password-toggle', 'Show');
+  toggle.type = 'button';
+  toggle.setAttribute('aria-label', 'Show password');
+  toggle.setAttribute('aria-pressed', 'false');
+  toggle.addEventListener('click', () => {
+    const visible = password.type === 'password';
+    password.type = visible ? 'text' : 'password';
+    toggle.textContent = visible ? 'Hide' : 'Show';
+    toggle.setAttribute('aria-label', `${visible ? 'Hide' : 'Show'} password`);
+    toggle.setAttribute('aria-pressed', String(visible));
+    password.focus();
+  });
+  passwordRow.append(password, toggle);
+  const error = node('p', 'login-error');
+  error.id = 'login-error'; error.setAttribute('aria-live', 'polite');
+  const signIn = node('button', 'submit-button login-submit', 'Sign in');
+  signIn.type = 'submit';
+  formElement.append(emailLabel, email, passwordLabel, passwordRow, error, signIn);
+  formElement.addEventListener('submit', (event) => {
+    event.preventDefault();
+    if (!email.value.trim() || !email.validity.valid) {
+      error.textContent = 'Enter a valid email address.';
+      email.setAttribute('aria-invalid', 'true');
+      email.focus();
+      return;
+    }
+    if (!password.value) {
+      error.textContent = 'Enter your password.';
+      password.setAttribute('aria-invalid', 'true');
+      password.focus();
+      return;
+    }
+    error.textContent = 'Sign-in is unavailable: no authentication provider is configured. Your credentials were not sent or saved.';
+    password.value = '';
+    password.focus();
+  });
+  const authNote = node('p', 'auth-note', 'Authentication is not configured for this application. You can continue without signing in; the API request will be unauthenticated.');
+  const guest = node('a', 'guest-link', 'Continue without signing in');
+  guest.href = '#ask';
+  card.append(formElement, authNote, guest);
+  loginRoot.append(card);
+}
+
+function renderExpiredAnswer() {
+  resultContent.replaceChildren();
+  const box = node('div', 'expired-state');
+  append(box, node('p', 'eyebrow', 'SESSION ENDED'));
+  append(box, node('h3', '', 'This answer is no longer available'));
+  append(box, node('p', '', 'Answer data is kept only for this browser session. Return to your question to request a fresh review.'));
+  const back = node('a', 'submit-button expired-back', 'Back to your question');
+  back.href = '#ask';
+  box.append(back);
+  resultContent.append(box);
+  showBadge('Session expired', 'muted');
+}
+
+function renderRoute(route) {
+  activeRoute = ['login', 'ask', 'answer'].includes(route) ? route : 'login';
+  const isLogin = activeRoute === 'login';
+  const isAsk = activeRoute === 'ask';
+  const isAnswer = activeRoute === 'answer';
+  routeLabel.textContent = isLogin ? 'Sign in' : isAsk ? 'Ask a question' : 'Evidence review';
+  loginRoot.hidden = !isLogin;
+  intro.hidden = isLogin || isAnswer;
+  workspace.hidden = isLogin;
+  document.body.dataset.route = activeRoute;
+  if (isLogin) {
+    renderLogin();
+    loginRoot.querySelector('#login-title')?.focus({ preventScroll: true });
+    return;
+  }
+  results.hidden = !isAnswer;
+  const answerActions = results.querySelector('.answer-actions');
+  answerActions?.remove();
+  if (isAnswer) {
+    const actions = node('div', 'answer-actions');
+    const back = node('a', 'back-link', '← Edit question');
+    back.href = '#ask';
+    const asked = readSession(SESSION_QUESTION_KEY);
+    if (asked) append(actions, node('p', 'answered-question', `QUESTION · ${asked}`));
+    actions.prepend(back);
+    results.prepend(actions);
+    const response = storedResponse();
+    if (response) renderResponse(response, { preview: activeResponseIsPreview });
+    else renderExpiredAnswer();
+    results.querySelector('#results-title')?.focus({ preventScroll: true });
+  } else {
+    if (!questionInput.value) questionInput.value = readSession(SESSION_QUESTION_KEY);
+    charCount.textContent = `${Array.from(questionInput.value).length.toLocaleString()} / 2,000`;
+    questionError.textContent = '';
+    requestFeedback.hidden = true;
+    document.querySelector('#question-title')?.focus({ preventScroll: true });
+  }
+}
+
+function syncRouteFromLocation() {
+  renderRoute(location.hash.slice(1) || 'login');
 }
 
 function validationMessage(value) {
@@ -650,7 +820,10 @@ function showPreview(state) {
   }
   const graphState = state.startsWith('graph-') ? state.slice('graph-'.length) : 'connected';
   const responseState = state === 'abstained' ? 'abstained' : 'answered';
-  renderResponse(previewResponse(responseState, graphState), { preview: true });
+  activeResponse = previewResponse(responseState, graphState);
+  activeResponseIsPreview = true;
+  renderResponse(activeResponse, { preview: true });
+  setRoute('answer');
 }
 
 function safeApiUrl() {
@@ -669,6 +842,7 @@ questionInput.addEventListener('input', () => {
   const message = validationMessage(questionInput.value);
   questionError.textContent = message;
   questionInput.setAttribute('aria-invalid', message ? 'true' : 'false');
+  try { sessionStorage.setItem(SESSION_QUESTION_KEY, questionInput.value); } catch { /* Session storage is optional. */ }
 });
 
 apiInput.addEventListener('change', () => {
@@ -690,6 +864,9 @@ form.addEventListener('submit', async (event) => {
     return;
   }
 
+  requestFeedback.hidden = true;
+  requestFeedback.replaceChildren();
+
   const endpoint = safeApiUrl();
   if (!endpoint) {
     showError('Check the API address', 'Enter a valid HTTP or HTTPS API base URL, such as http://127.0.0.1:8000.');
@@ -697,11 +874,13 @@ form.addEventListener('submit', async (event) => {
     return;
   }
 
-  const context = {};
-  if (matchInput.value.trim()) context.match_id = matchInput.value.trim();
-  if (triggerInput.value.trim()) context.trigger_event_id = triggerInput.value.trim();
   const body = { question };
-  if (Object.keys(context).length) body.context = context;
+  activeResponse = null;
+  activeResponseIsPreview = false;
+  try {
+    sessionStorage.setItem(SESSION_QUESTION_KEY, question);
+    sessionStorage.removeItem(SESSION_RESPONSE_KEY);
+  } catch { /* The request remains usable when session storage is unavailable. */ }
 
   submitButton.disabled = true;
   submitButton.querySelector('.button-label').textContent = 'Reviewing…';
@@ -745,7 +924,10 @@ form.addEventListener('submit', async (event) => {
       showError('The response did not match the API contract', 'The response is incomplete or malformed. Try again; malformed content was not presented as evidence.');
       return;
     }
-    renderResponse(payload);
+    activeResponse = payload;
+    activeResponseIsPreview = false;
+    try { sessionStorage.setItem(SESSION_RESPONSE_KEY, JSON.stringify(payload)); } catch { /* Keep response in memory for this page session. */ }
+    setRoute('answer');
   } catch (error) {
     const timedOut = error?.name === 'TimeoutError';
     showError(timedOut ? 'The request took too long' : 'Could not reach the API', timedOut
@@ -760,3 +942,7 @@ form.addEventListener('submit', async (event) => {
 
 questionInput.setAttribute('aria-invalid', 'false');
 makePreviewTools();
+window.addEventListener('hashchange', syncRouteFromLocation);
+window.addEventListener('popstate', syncRouteFromLocation);
+if (!location.hash) history.replaceState(null, '', '#login');
+syncRouteFromLocation();

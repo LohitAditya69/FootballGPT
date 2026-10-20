@@ -10,14 +10,15 @@
   <body>
     <div class="app-shell">
       <header class="topbar">
-        <a class="brand" href="#main" aria-label="FootballGPT home">
+        <a class="brand" href="#login" aria-label="FootballGPT sign in">
           <span class="brand-mark" aria-hidden="true">FG</span>
           <span>Football<span class="brand-light">GPT</span></span>
         </a>
-        <div class="topbar-meta"><span class="live-dot" aria-hidden="true"></span> Evidence workspace <span class="topbar-divider">/</span> API v1</div>
+        <div class="topbar-meta"><span class="live-dot" aria-hidden="true"></span><span id="route-label">Sign in</span><span class="topbar-divider">/</span> API v1</div>
       </header>
 
       <main id="main">
+        <section id="login-root" class="login-root" aria-labelledby="login-title" hidden></section>
         <section class="intro" aria-labelledby="page-title">
           <p class="eyebrow">MATCH ANALYSIS · SOURCE FIRST</p>
           <h1 id="page-title">A clearer view<br /><em>of the game.</em></h1>
@@ -29,7 +30,7 @@
           <section class="question-panel panel" aria-labelledby="question-title">
             <div class="panel-heading">
               <div class="step-number">01</div>
-              <div><p class="eyebrow">YOUR QUESTION</p><h2 id="question-title">Set the moment</h2></div>
+              <div><p class="eyebrow">YOUR QUESTION</p><h2 id="question-title" tabindex="-1">Ask the game</h2></div>
             </div>
 
             <form id="ask-form" novalidate>
@@ -38,22 +39,22 @@
               <div class="field-meta"><span id="question-help">Keep it focused. 1–2,000 characters.</span><span id="char-count">0 / 2,000</span></div>
               <p id="question-error" class="field-error" aria-live="polite"></p>
 
-              <div class="context-divider"><span>OPTIONAL MATCH CONTEXT</span><span class="divider-line"></span></div>
-              <div class="context-fields">
-                <div class="field-group"><label class="field-label" for="match-id">Match ID</label><input id="match-id" name="match_id" type="text" autocomplete="off" placeholder="StatsBomb match ID" /></div>
-                <div class="field-group"><label class="field-label" for="trigger-event-id">Trigger event ID</label><input id="trigger-event-id" name="trigger_event_id" type="text" autocomplete="off" placeholder="StatsBomb event UUID" /></div>
-              </div>
+              <p class="question-context-note">This question is sent on its own. Match events and history appear only when returned by the API.</p>
 
-              <div class="field-group api-field">
-                <label class="field-label" for="api-base-url">API base URL</label>
-                <input id="api-base-url" name="api_base_url" type="url" inputmode="url" spellcheck="false" aria-describedby="api-help" />
-                <span id="api-help" class="field-hint">The app appends <code>/api/v1/ask</code>. Saved in this browser only.</span>
-              </div>
+              <details class="api-settings">
+                <summary>Developer settings</summary>
+                <div class="field-group api-field">
+                  <label class="field-label" for="api-base-url">API base URL</label>
+                  <input id="api-base-url" name="api_base_url" type="url" inputmode="url" spellcheck="false" aria-describedby="api-help" />
+                  <span id="api-help" class="field-hint">The app appends <code>/api/v1/ask</code>. Saved in this browser only.</span>
+                </div>
+              </details>
 
               <button id="submit-button" class="submit-button" type="submit">
                 <span class="button-label">Review evidence</span><span class="button-arrow" aria-hidden="true">↗</span>
               </button>
               <p id="request-status" class="request-status" role="status" aria-live="polite"></p>
+              <div id="request-feedback" class="request-feedback" hidden></div>
             </form>
             <div id="preview-tools" class="preview-tools" hidden></div>
           </section>
@@ -61,7 +62,7 @@
           <section id="results" class="results-panel panel" aria-labelledby="results-title" aria-live="polite" aria-busy="false">
             <div class="panel-heading result-heading">
               <div class="step-number">02</div>
-              <div><p class="eyebrow">RESPONSE</p><h2 id="results-title">Evidence review</h2></div>
+              <div><p class="eyebrow">RESPONSE</p><h2 id="results-title" tabindex="-1">Evidence review</h2></div>
               <span id="response-badge" class="response-badge badge-muted">Waiting</span>
             </div>
             <div id="result-content" class="result-content">
