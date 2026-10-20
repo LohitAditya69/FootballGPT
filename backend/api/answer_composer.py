@@ -33,10 +33,11 @@ def is_clean_tactical_sentence(s: str) -> bool:
     s = s.strip()
     if len(s) < 35 or len(s) > 260:
         return False
-    # Avoid tables, drills, results, or front-matter fragments
+    # Avoid tables, drills, results, goal-scoring logs, or front-matter fragments
     if re.search(
         r"(?:per 90|table of contents|roll of honour|session organisation|goalkeepers|"
-        r"matchday \d+ results|group [a-z]|drill|oranges|purple team)",
+        r"matchday \d+ results|group [a-z]|drill|oranges|purple team|how the goal was scored|"
+        r"coaching points\s*[•]|\b\d+\s*players\b)",
         s,
         re.I,
     ):
@@ -58,7 +59,10 @@ def is_clean_tactical_sentence(s: str) -> bool:
 def clean_coaching_clause(text: str) -> str:
     """Clean tactical clauses into natural coaching statements."""
     t = text.strip()
-    t = t.replace('"', "").replace("'", "'").strip()
+    t = t.replace("\ufffd", "'").replace("“", '"').replace("”", '"').replace("‘", "'").replace("’", "'")
+    t = re.sub(r"[\xa0\t]+", " ", t)
+    # Remove leading quotes and bullets
+    t = re.sub(r'^[“"\'\s•\-–—\*]+', "", t)
     # Remove trailing reporter/speaker attributions
     t = re.sub(
         r'[,–—\-]?\s*(?:said|adds|added|explained|noted|continued|concluded|says)\s+[A-Za-z\s\.\-]+(?:\.|$)',
@@ -77,7 +81,8 @@ def clean_coaching_clause(text: str) -> str:
         t,
         flags=re.I,
     )
-    t = re.sub(r"^\s*[•\-–—\*]\s*", "", t)
+    # Remove trailing quotes
+    t = re.sub(r'["\']+$', "", t)
     t = re.sub(r"\s+", " ", t).strip()
     if t and t[0].islower():
         t = t[0].upper() + t[1:]
@@ -185,17 +190,16 @@ def compose_grounded_answer(
 
     sentences: list[str] = []
 
-    # 1. Primary tactical principle (Sentence 1)
+    # 1. Primary tactical principle (Sentence 1 - Direct Answer)
     stmt1, cit1 = points[0]
-    first_char_lower = stmt1[0].lower() + stmt1[1:] if len(stmt1) > 1 else stmt1
-    sentences.append(f"According to UEFA technical analysis, {first_char_lower} ({cit1}).")
+    sentences.append(f"{stmt1} ({cit1}).")
 
     # 2. Secondary tactical detail (Sentence 2)
     if len(points) > 1:
         stmt2, cit2 = points[1]
         second_char_lower = stmt2[0].lower() + stmt2[1:] if len(stmt2) > 1 else stmt2
         if stmt2.lower() != stmt1.lower():
-            sentences.append(f"Coaching observations further emphasize that {second_char_lower} ({cit2}).")
+            sentences.append(f"In execution, {second_char_lower} ({cit2}).")
         else:
             sentences.append(f"Tactical analysis notes this principle requires coordinated positioning and situational awareness ({cit1}).")
     else:
@@ -206,7 +210,7 @@ def compose_grounded_answer(
     if len(points) > 2 and not event_evidence and not unresolved_event_context and len(sentences) < 3:
         stmt3, cit3 = points[2]
         third_char_lower = stmt3[0].lower() + stmt3[1:] if len(stmt3) > 1 else stmt3
-        sentences.append(f"Technical reports also highlight that {third_char_lower} ({cit3}).")
+        sentences.append(f"Furthermore, {third_char_lower} ({cit3}).")
 
     # 4. Context & Channel Separation (Rule 5 & 6)
     if event_evidence:
@@ -244,7 +248,7 @@ def validate_grounded_answer(
     passages: list[TacticalPassage],
     is_abstained: bool = False,
 ) -> tuple[bool, str]:
-    """Validate that the composed answer adheres to Lap 4A grounding and contract rules."""
+    """Validate that the composed answer adheres to Lap 4A/5A grounding and contract rules."""
     if is_abstained:
         if not answer:
             return False, "Abstention answer is empty"
@@ -253,6 +257,16 @@ def validate_grounded_answer(
     s_count = count_sentences(answer)
     if not (2 <= s_count <= 5):
         return False, f"Answer must contain 2-5 sentences, got {s_count}"
+
+    # Verify no forbidden boilerplate starter in answered response
+    forbidden_starters = [
+        "according to uefa technical analysis",
+        "evidence review",
+        "evidence brief",
+    ]
+    for starter in forbidden_starters:
+        if answer.lower().startswith(starter):
+            return False, f"Answer starts with forbidden boilerplate prefix '{starter}'"
 
     # Extract all parenthesized citations from the answer
     found_citations = re.findall(r"\((uefa-[a-z0-9\-]+\s+p\.\d+)\)", answer)
