@@ -1,23 +1,23 @@
 {
   "schema_version": "retrieval-graph-v2",
   "builder": "scripts/build_retrieval_graph.py",
-  "networkx_version": "3.7",
-  "graph_file": "backend/data/retrieval_graph.json",
-  "graph_sha256": "3d638e17baa3ad6dde4218c1275cbb7fc968232998386f2f043aad7a017dbc2e",
+  "networkx_version": "3.6.1",
+  "graph_file": "backend\\data\\retrieval_graph.json",
+  "graph_sha256": "a37518e0507cf3fa8754d7b7a4dc252b61fd1ce4fbe2e44345f6b867e35451f1",
   "inputs": {
-    "backend/data/uefa_evidence_chunks.jsonl": "49783fc2e9dc9124797ad2c4d617d787662769f07f8335749b24a04171f23010",
-    "backend/data/question_event_evidence.jsonl": "42863401f02b87103ffd6c02a46dab38534b4a679824ab7794480c60c1f6e4df",
-    "backend/data/historical_train_sample.jsonl.gz": "ded3442d1373f45601139ea9606b01599bf52f186455a062b501290494c9f361"
+    "backend\\data\\uefa_evidence_chunks.jsonl": "1b1bc2a66034a30c27abd9bf5e7fc5e8be3c019efe906ec80d8425e539272558",
+    "backend\\data\\question_event_evidence.jsonl": "f1e50bed3e51f603c00cf5ece2a9c98e73ccbd1b54b27f5620be885ae847e26a",
+    "backend\\data\\historical_train_sample.jsonl.gz": "ded3442d1373f45601139ea9606b01599bf52f186455a062b501290494c9f361"
   },
   "bounds": {
-    "uefa_chunks": 765,
+    "uefa_chunks": 3079,
     "event_windows": 12,
     "event_records_deduplicated": 132,
     "train_situation_sample_cap": "3 per train match",
     "concepts": 10
   },
-  "node_count": 25253,
-  "edge_count": 52328,
+  "node_count": 27567,
+  "edge_count": 54886,
   "node_types": {
     "concept_group": 5,
     "formation": 12,
@@ -31,7 +31,7 @@
     "train_event": 10023,
     "train_situation": 10023,
     "uefa_report": 5,
-    "uefa_text_chunk": 765
+    "uefa_text_chunk": 3079
   },
   "edge_types": {
     "belongs_to_group": 10,
@@ -39,10 +39,10 @@
     "event_type_indicates_concept": 9984,
     "from_match": 12,
     "from_train_match": 10023,
-    "has_chunk": 765,
+    "has_chunk": 3079,
     "has_page": 481,
     "has_recorded_formation": 107,
-    "mentions_concept": 1246,
+    "mentions_concept": 1490,
     "opposed_by_team": 9258,
     "recorded_for_player": 132,
     "recorded_for_team": 10155,
