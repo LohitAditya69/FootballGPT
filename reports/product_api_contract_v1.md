@@ -1,6 +1,6 @@
 # FootballGPT product API contract v1
 
-**Status:** Shared draft for Lap 2 backend and Lap 3 frontend planning. Treat this file as read-only during implementation. Any contract change must be reviewed and approved by the user before either side implements it.
+**Status:** Shared draft for Lap 2 backend and Lap 3 frontend planning. The optional historical recorded-event sequence field and fixed-weight score semantics below were approved by the user for Lap 9 implementation. Future contract changes must be reviewed and approved by the user before either side implements them.
 
 ## Endpoint
 
@@ -71,8 +71,30 @@ Request and response bodies use JSON. A successful request returns HTTP 200, inc
 - Each tactical passage must preserve the source ID, page, stable evidence ID, citation string, and exact excerpt. Do not label a retrieved passage as relevant merely because it was retrieved.
 - `event_evidence` may be `null` when no supported event window is available. Keep recorded match events distinct from UEFA tactical passages.
 - `historical_examples` may be empty. If populated, label them as historical event examples, not UEFA principles or coaching ground truth.
+- Each historical example may include `recorded_event_sequence`. It is `null` when an ordered, same-match train-split event window could not be verified; it is an ordered array of at most five post-anchor records when available. An empty array means a verified window contained no following events. The sequence is observational only and must not imply intent, tactical choice, causality, or effectiveness.
+- Each `historical_score` is a fixed-weight metadata agreement value in `[0, 1]`, not a probability, coach judgment, or tactical-effectiveness score. Missing or incomparable dimensions do not contribute points. `similarity_breakdown` includes per-feature agreement plus `available_weight`, `compared_feature_count`, `query_feature_count`, and `feature_coverage`.
 - `provenance` may be `null` only when no provenance can be produced; explain the omission in `limitations`.
 - `limitations` must state material source coverage or missing-video constraints where applicable.
+
+### Historical example sequence shape
+
+`recorded_event_sequence` is nullable and belongs only to its `historical_examples[]` anchor. It never populates `event_evidence`. If present, each entry must be a real event from the same training-split match, ordered by increasing `event_index`, after the anchor (`window_offset` 1–5):
+
+```json
+{
+  "recorded_event_sequence": [
+    {
+      "event_index": 217,
+      "timestamp": "00:03:17.818",
+      "event_type": "Pass",
+      "team": "Recorded team name",
+      "window_offset": 1
+    }
+  ]
+}
+```
+
+The example illustrates the field shape only. Sequence contents must come from a verified ordered train-split source; the API must return `null` rather than infer or fabricate neighboring events when that source is unavailable. Event descriptions must remain literal observations (for example, “a recorded pass followed the interception”).
 
 ## Error response
 
