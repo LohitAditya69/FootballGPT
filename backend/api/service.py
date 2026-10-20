@@ -9,6 +9,7 @@ import uuid
 from pathlib import Path
 from typing import Any
 
+from backend.api.answer_composer import compose_grounded_answer
 from backend.api.config import Settings, settings
 from backend.api.schemas import (
     AskRequest,
@@ -211,6 +212,10 @@ class TacticalService:
         question = request.question.strip()
         # 1. Resolve event context
         window, trigger_event, event_limits = self._resolve_event_context(request.context)
+        unresolved_event_context = (
+            (request.context is not None and (request.context.match_id or request.context.trigger_event_id) and not window)
+            or (window is None and any(kw in question.lower() for kw in ["match", "pass from", "recorded after", "intercepted", "restart"]))
+        )
         match_id_to_exclude = str(request.context.match_id) if (request.context and request.context.match_id) else (
             str(window["match_id"]) if window else None
         )
@@ -299,10 +304,7 @@ class TacticalService:
             status = "answered"
             support_status = "conditional"
             answer_mode = "extractive_evidence_brief"
-            answer = (
-                "Retrieved source passages are shown verbatim below. "
-                "They support review of the question but do not establish missing match context or coaching ground truth."
-            )
+            answer = ""
 
             # Combine candidates deterministically
             v_norm = normalize_channel(v_rows, "vector_score")
@@ -385,7 +387,18 @@ class TacticalService:
                 events=window.get("events", []),
             )
 
-        # 6. Build Provenance Trace
+        # 6. Compose grounded answer
+        if status == "answered" and tactical_passages:
+            answer = compose_grounded_answer(
+                question=question,
+                tactical_passages=tactical_passages,
+                event_evidence=event_model,
+                historical_examples=historical_examples,
+                unresolved_event_context=unresolved_event_context,
+                fixed_chunks=self.fixed_chunks,
+            )
+
+        # 7. Build Provenance Trace
         qid = req_id
         q_node = f"question:{qid}"
         nodes: list[dict[str, Any]] = [{"id": q_node, "node_type": "question", "text": question}]
