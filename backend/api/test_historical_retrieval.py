@@ -40,7 +40,8 @@ def test_parser_detects_interception_turnovers() -> None:
     features, reason = parse_question_to_event_query(q)
     assert features is not None
     assert features["event_type"] == "Interception"
-    assert features["location"] == [60.0, 40.0]
+    # A region word is not a precise StatsBomb coordinate; keep it unknown.
+    assert features["location"] is None
     assert reason is None
 
 
@@ -50,7 +51,8 @@ def test_parser_detects_counterattacks_and_defensive_third() -> None:
     assert features is not None
     assert features["event_type"] == "Interception"
     assert features["play_pattern"] == "From Counter"
-    assert features["location"] == [20.0, 40.0]
+    # Team-relative phrasing does not establish a field direction or point.
+    assert features["location"] is None
 
 
 def test_parser_rejects_unrepresentable_off_ball_concepts() -> None:
