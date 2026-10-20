@@ -146,9 +146,12 @@ def test_supported_question_response_contract(client: TestClient, service: Tacti
         assert int(passage["page"]) == int(fixed["page"])
         assert passage["citation"] == fixed["citation"]
 
-    # No event context provided -> event_evidence is null, historical_examples empty
+    # No exact event context provided -> event_evidence is null; question-derived H retrieval populates train examples
     assert data["event_evidence"] is None
-    assert data["historical_examples"] == []
+    assert isinstance(data["historical_examples"], list)
+    for h in data["historical_examples"]:
+        assert h["source_split"] == "train"
+        assert "similar recorded situation" in h["label"]
 
     # Provenance
     assert data["provenance"]["schema_version"] == "rgg-provenance-v1"
