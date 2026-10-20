@@ -11,8 +11,10 @@ if str(ROOT) not in sys.path:
 import pytest
 from fastapi.testclient import TestClient
 
+from backend.api.answer_composer import count_sentences, validate_grounded_answer
 from backend.api.app import create_app
 from backend.api.config import settings
+from backend.api.schemas import TacticalPassage
 from backend.api.service import TacticalService
 
 
@@ -113,6 +115,13 @@ def test_supported_question_response_contract(client: TestClient, service: Tacti
     assert data["support_status"] == "conditional"
     assert data["answer_mode"] == "extractive_evidence_brief"
     assert isinstance(data["answer"], str) and len(data["answer"]) > 0
+    assert "Retrieved source passages are shown verbatim below" not in data["answer"]
+    assert 2 <= count_sentences(data["answer"]) <= 5
+    is_valid, msg = validate_grounded_answer(
+        data["answer"],
+        [TacticalPassage(**p) for p in data["tactical_passages"]],
+    )
+    assert is_valid, msg
 
     assert isinstance(data["tactical_passages"], list)
     assert len(data["tactical_passages"]) > 0
@@ -257,3 +266,63 @@ def test_internal_service_error_handling(service: TacticalService) -> None:
         assert "Secret" not in res.text
         assert "Traceback" not in res.text
         assert "disk failed" not in res.text
+
+
+def test_lap4_answer_grounded_sentence_count_and_citations(client: TestClient) -> None:
+    payload = {
+        "question": "How can full-backs help a team create space when opponents press them tightly in build-up?",
+        "context": None,
+    }
+    res = client.post("/api/v1/ask", json=payload)
+    assert res.status_code == 200
+    data = res.json()
+
+    assert data["status"] == "answered"
+    answer = data["answer"]
+    assert 2 <= count_sentences(answer) <= 5
+
+    # Check grounding against returned passages
+    passages = [TacticalPassage(**p) for p in data["tactical_passages"]]
+    is_valid, msg = validate_grounded_answer(answer, passages)
+    assert is_valid, msg
+
+
+def test_lap4_unresolved_event_context_contains_no_invented_facts(client: TestClient) -> None:
+    payload = {
+        "question": "How should a team organize its defensive block against wide crosses?",
+        "context": {
+            "match_id": "nonexistent_match_88888",
+            "trigger_event_id": "nonexistent_uuid_77777",
+        },
+    }
+    res = client.post("/api/v1/ask", json=payload)
+    assert res.status_code == 200
+    data = res.json()
+
+    # Must state limitation and not invent match facts
+    assert data["event_evidence"] is None
+    assert "specific match context could not be resolved" in data["answer"].lower()
+    assert 2 <= count_sentences(data["answer"]) <= 5
+
+
+def test_lap4_distinct_evidence_channels_in_answered_query(client: TestClient) -> None:
+    # Query with valid event context
+    payload = {
+        "question": "Should a team counterattack immediately after winning the ball?",
+        "context": {
+            "match_id": "69289",
+            "trigger_event_id": "a8741e2f-3aff-4a73-aacb-1ae683e6a2a1",
+        },
+    }
+    res = client.post("/api/v1/ask", json=payload)
+    assert res.status_code == 200
+    data = res.json()
+
+    assert data["status"] == "answered"
+    answer = data["answer"]
+    # Check that event evidence is mentioned distinctly as recorded data
+    assert "Recorded match event evidence" in answer
+    assert "match 69289" in answer
+    # Check that UEFA guidance is also present and cited
+    assert "According to UEFA technical analysis" in answer
+    assert 2 <= count_sentences(answer) <= 5
