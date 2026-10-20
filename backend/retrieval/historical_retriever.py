@@ -108,7 +108,7 @@ def parse_question_to_event_query(question: str) -> tuple[dict[str, Any] | None,
     # Detect discrete on-ball event type
     event_type = None
     if re.search(
-        r"\b(?:interception|intercepted|winning the ball|won the ball|win the ball|ball recovery|regains?|regaining|regained|turnovers?)\b",
+        r"\b(?:interception|intercepted|winning the ball|won the ball|win the ball|ball recovery|recovering the ball|recovered the ball|regains?|regaining|regained|turnovers?)\b",
         ql,
     ):
         event_type = "Interception"
