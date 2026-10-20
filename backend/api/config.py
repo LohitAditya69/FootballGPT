@@ -32,5 +32,14 @@ class Settings:
     host: str = os.getenv("FOOTBALLGPT_HOST", "127.0.0.1")
     port: int = int(os.getenv("FOOTBALLGPT_PORT", "8000"))
 
+    # Server-side LLM provider configuration (outside source control)
+    llm_provider: str = os.getenv("FOOTBALLGPT_LLM_PROVIDER", "none")
+    llm_model: str = os.getenv("FOOTBALLGPT_LLM_MODEL", "gpt-4o-mini")
+    llm_base_url: str | None = os.getenv("FOOTBALLGPT_LLM_BASE_URL", None)
+    llm_api_key: str | None = os.getenv("FOOTBALLGPT_LLM_API_KEY", None)
+    llm_timeout_seconds: float = float(os.getenv("FOOTBALLGPT_LLM_TIMEOUT", "8.0"))
+    llm_max_tokens: int = int(os.getenv("FOOTBALLGPT_LLM_MAX_TOKENS", "300"))
+    llm_temperature: float = float(os.getenv("FOOTBALLGPT_LLM_TEMPERATURE", "0.2"))
+
 
 settings = Settings()
