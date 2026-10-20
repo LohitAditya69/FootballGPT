@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import sys
 from pathlib import Path
 from unittest.mock import patch
@@ -322,9 +323,9 @@ def test_lap4_distinct_evidence_channels_in_answered_query(client: TestClient) -
     answer = data["answer"]
     # Check that event evidence is mentioned distinctly as recorded data
     assert "Recorded match event evidence" in answer
-    assert "match 69289" in answer
     # Check that UEFA guidance is also present and cited
-    assert "According to UEFA technical analysis" in answer
+    assert not answer.lower().startswith("according to uefa technical analysis")
+    assert re.search(r"\(uefa-[a-z0-9\-]+\s+p\.\d+\)", answer)
     assert 2 <= count_sentences(answer) <= 5
 
 
@@ -366,3 +367,55 @@ def test_api_llm_failure_falls_back_safely(service: TacticalService) -> None:
         assert 2 <= count_sentences(data["answer"]) <= 5
         # Citations are still present from fallback
         assert any("uefa-" in data["answer"] for _ in [1])
+
+
+def test_screenshot_regression_winning_ball_in_midfield(service: TacticalService) -> None:
+    """Regression test for user screenshot query:
+    'How should a team respond after winning the ball in midfield?'
+    Verifies:
+    1. Returns status 'answered' with valid grounded answer (2-5 sentences).
+    2. Excludes Tottenham goal recaps (Spurs, Johnson, etc.) and training drill fragments (20 players, oranges, etc.).
+    3. Starts directly with a tactical coaching principle without boilerplate prefixes.
+    4. Cites substantive transition passages (e.g. uefa-weuro-2025 p.68 or uefa-uwcl-2024-25 p.69).
+    """
+    app = create_app(service.cfg, service=service)
+    client = TestClient(app)
+
+    payload = {
+        "question": "How should a team respond after winning the ball in midfield?"
+    }
+    res = client.post("/api/v1/ask", json=payload)
+    assert res.status_code == 200
+    data = res.json()
+
+    assert data["status"] == "answered"
+    assert data["answer_mode"] == "extractive_evidence_brief"
+    answer = data["answer"]
+
+    # Verify no Spurs / Johnson goal recap fragment
+    assert "Spurs" not in answer
+    assert "Johnson" not in answer
+    for p in data["tactical_passages"]:
+        assert "Spurs" not in p["excerpt"]
+        assert "Johnson" not in p["excerpt"]
+
+    # Verify no training drill fragment
+    assert "20 players" not in answer
+    assert "drill" not in answer.lower()
+    for p in data["tactical_passages"]:
+        assert "20 players" not in p["excerpt"]
+        assert "goalkeepers" not in p["excerpt"]
+
+    # Verify direct answering without boilerplate prefixes
+    assert not answer.lower().startswith("according to uefa technical analysis")
+    assert not answer.lower().startswith("evidence review")
+    assert not answer.lower().startswith("evidence brief")
+
+    # Verify citations resolve to valid UEFA passages
+    citations = re.findall(r"\((uefa-[a-z0-9\-]+\s+p\.\d+)\)", answer)
+    assert len(citations) >= 1
+    returned_cits = {p["citation"] for p in data["tactical_passages"]}
+    for c in citations:
+        assert c in returned_cits
+
+    assert 2 <= count_sentences(answer) <= 5
