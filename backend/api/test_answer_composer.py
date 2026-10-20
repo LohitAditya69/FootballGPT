@@ -99,9 +99,12 @@ def test_grounded_answer_structure_and_sentence_count(
     valid, msg = validate_grounded_answer(ans, sample_passages)
     assert valid, msg
 
-    # No generic boilerplate notice
+    # Direct answer - no boilerplate starter or generic notice
     assert "Retrieved source passages are shown verbatim below" not in ans
-    assert "According to UEFA technical analysis" in ans
+    assert not ans.lower().startswith("according to uefa technical analysis")
+    assert not ans.lower().startswith("evidence review")
+    assert not ans.lower().startswith("evidence brief")
+    assert "uefa-ucl-2024-25 p.23" in ans
 
 
 def test_citation_linkage(
@@ -211,12 +214,24 @@ def test_validation_grounding_rejects_hallucinated_citations(
     sample_passages: list[TacticalPassage],
 ) -> None:
     bad_answer = (
-        "According to UEFA technical analysis, space must be preserved (uefa-invented-2099 p.99). "
+        "Positional spacing must be preserved across wide areas (uefa-invented-2099 p.99). "
         "Tactical guidance stresses team shape."
     )
     valid, msg = validate_grounded_answer(bad_answer, sample_passages)
     assert not valid
     assert "does not resolve to returned tactical passages" in msg
+
+
+def test_validation_grounding_rejects_boilerplate_prefixes(
+    sample_passages: list[TacticalPassage],
+) -> None:
+    bad_prefix_answer = (
+        "According to UEFA technical analysis, players must open up space (uefa-ucl-2024-25 p.23). "
+        "Tactical guidance stresses positional discipline."
+    )
+    valid, msg = validate_grounded_answer(bad_prefix_answer, sample_passages)
+    assert not valid
+    assert "starts with forbidden boilerplate prefix" in msg
 
 
 def test_validation_grounding_rejects_generic_boilerplate(
