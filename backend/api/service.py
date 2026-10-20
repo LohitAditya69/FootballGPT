@@ -391,13 +391,27 @@ class TacticalService:
 
         # 6. Compose grounded answer (LLM generation with safe deterministic fallback)
         if status == "answered" and tactical_passages:
-            llm_result = self.llm_client.generate_answer(
-                question=question,
-                passages=tactical_passages,
-                event_evidence=event_model,
-                historical_examples=historical_examples,
-                fixed_chunks=self.fixed_chunks,
-            )
+            try:
+                llm_result = self.llm_client.generate_answer(
+                    question=question,
+                    passages=tactical_passages,
+                    event_evidence=event_model,
+                    historical_examples=historical_examples,
+                    fixed_chunks=self.fixed_chunks,
+                )
+            except Exception as e:
+                logger.warning("LLM generation invocation raised exception: %s", e)
+                from backend.api.llm_client import LLMResult
+
+                llm_result = LLMResult(
+                    text=None,
+                    success=False,
+                    provider=self.llm_client.provider,
+                    model=self.llm_client.model,
+                    error=str(e),
+                    fallback_used=True,
+                )
+
             if llm_result.success and llm_result.text:
                 answer = llm_result.text
                 limitations.append(
