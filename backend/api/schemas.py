@@ -72,7 +72,7 @@ class HistoricalExample(BaseModel):
     historical_score: float
     similarity_breakdown: dict[str, float] = Field(default_factory=dict)
     source_split: str = "train"
-    label: str = "historical event example (train split, not UEFA coaching principle)"
+    label: str = "similar recorded situation (train split, not UEFA coaching principle)"
 
     @field_validator("formation", mode="before")
     @classmethod
