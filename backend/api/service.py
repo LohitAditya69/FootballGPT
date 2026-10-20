@@ -22,7 +22,11 @@ from backend.api.schemas import (
 )
 from backend.retrieval.combined_retriever import load_ranking_config, normalize_channel
 from backend.retrieval.graph_retriever import load_graph, retrieve_graph
-from backend.retrieval.historical_retriever import load_historical_index, retrieve_historical
+from backend.retrieval.historical_retriever import (
+    load_historical_index,
+    parse_question_to_event_query,
+    retrieve_historical,
+)
 from backend.retrieval.vector_retriever import load_bm25_index, retrieve_bm25
 
 logger = logging.getLogger(__name__)
@@ -203,7 +207,7 @@ class TacticalService:
                 )
             else:
                 limitations.append(
-                    "No event context was provided; match event evidence and historical situation retrieval were skipped."
+                    "No exact match event context was provided; exact match event evidence was skipped."
                 )
 
         return window, trigger_event, limitations
@@ -352,7 +356,7 @@ class TacticalService:
                     "No valid page-cited passage passed fixed-chunk verification; abstain pending source review."
                 )
 
-        # 4. Historical retrieval (strictly conditioned on grounded event + match exclusion)
+        # 4. Historical retrieval (strictly conditioned on grounded event + match exclusion OR question-derived search)
         historical_examples: list[HistoricalExample] = []
         if trigger_event and match_id_to_exclude:
             h_raw = retrieve_historical(
@@ -380,12 +384,59 @@ class TacticalService:
                         historical_score=h.get("historical_score", 0.0),
                         similarity_breakdown=h.get("similarity_breakdown", {}),
                         source_split=h.get("source_split", "train"),
-                        label="historical event example (train split, not UEFA coaching principle)",
+                        label="similar recorded situation (train split, not UEFA coaching principle)",
                     )
                 )
             limitations.append(
                 f"Historical examples are similar event records from the training split (excluding match {match_id_to_exclude}); they do not constitute UEFA tactical recommendations."
             )
+        elif not (request.context and (request.context.match_id or request.context.trigger_event_id)):
+            # Question-only request: derive bounded event features directly from question text
+            query_event_features, unrep_reason = parse_question_to_event_query(question)
+            if query_event_features:
+                h_raw = retrieve_historical(
+                    query_event_features,
+                    self.historical_cases,
+                    exclude_match_id=None,
+                    top_k=self.cfg.top_k_historical,
+                    min_score_threshold=0.40,
+                )
+                for h in h_raw:
+                    historical_examples.append(
+                        HistoricalExample(
+                            evidence_id=h["evidence_id"],
+                            case_id=h.get("case_id"),
+                            match_id=str(h["match_id"]),
+                            team=h.get("team"),
+                            opponent=h.get("opponent"),
+                            timestamp=h.get("timestamp"),
+                            event_type=h.get("event_type"),
+                            play_pattern=h.get("play_pattern"),
+                            location=h.get("location"),
+                            formation=h.get("formation"),
+                            historical_score=h.get("historical_score", 0.0),
+                            similarity_breakdown=h.get("similarity_breakdown", {}),
+                            source_split=h.get("source_split", "train"),
+                            label="similar recorded situation (train split, not UEFA coaching principle)",
+                        )
+                    )
+                if historical_examples:
+                    limitations.append(
+                        "Historical examples are similar recorded event situations from the StatsBomb training split; "
+                        "they illustrate recorded patterns but do not constitute UEFA tactical principles or proof of effectiveness."
+                    )
+                else:
+                    limitations.append(
+                        "No training-split match situations met the similarity threshold for the question's event features."
+                    )
+            else:
+                if unrep_reason:
+                    limitations.append(unrep_reason)
+                else:
+                    limitations.append(
+                        "No event context was provided and question does not correspond to discrete recorded on-ball events; "
+                        "match situation retrieval was skipped."
+                    )
 
         # 5. Build EventEvidence model if resolved
         event_model: EventEvidence | None = None
