@@ -522,17 +522,48 @@ class TacticalService:
                 events=window.get("events", []),
             )
 
-        # 6. Compose the deterministic evidence-to-claim answer. LLM wording is a
-        # later lap; current provider output remains exact-quotation constrained.
+        # 6. Paraphrase only the deterministic Lap 11 claim set when a provider is
+        # configured; every failure returns to the same deterministic composer.
         if status == "answered" and tactical_passages:
-            answer = compose_grounded_answer(
-                question=question,
-                tactical_passages=tactical_passages,
-                event_evidence=event_model,
-                historical_examples=historical_examples,
-                unresolved_event_context=unresolved_event_context,
-                fixed_chunks=self.fixed_chunks,
-            )
+            answer = None
+            provider_configured = False
+            try:
+                provider_configured = self.llm_client.is_configured()
+            except Exception as exc:
+                logger.warning("LLM provider configuration check failed with %s", type(exc).__name__)
+
+            if provider_configured:
+                try:
+                    llm_result = self.llm_client.generate_answer(
+                        question=question,
+                        passages=tactical_passages,
+                        event_evidence=event_model,
+                        historical_examples=historical_examples,
+                        fixed_chunks=self.fixed_chunks,
+                    )
+                except Exception as exc:
+                    logger.warning("LLM generation failed with %s; using deterministic fallback", type(exc).__name__)
+                    llm_result = None
+
+                if llm_result is not None and llm_result.success and llm_result.text:
+                    answer = llm_result.text
+                    limitations.append(
+                        "Coaching wording was paraphrased by the configured server-side LLM; each sentence was checked against an approved Lap 11 claim and its returned citation."
+                    )
+                else:
+                    limitations.append(
+                        "LLM paraphrase was unavailable or failed claim validation; the deterministic Lap 11 answer was used."
+                    )
+
+            if answer is None:
+                answer = compose_grounded_answer(
+                    question=question,
+                    tactical_passages=tactical_passages,
+                    event_evidence=event_model,
+                    historical_examples=historical_examples,
+                    unresolved_event_context=unresolved_event_context,
+                    fixed_chunks=self.fixed_chunks,
+                )
             if answer == GENERIC_ABSTENTION_NOTICE:
                 status = "abstained"
                 support_status = "unknown"
