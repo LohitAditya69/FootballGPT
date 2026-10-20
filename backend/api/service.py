@@ -32,11 +32,55 @@ from backend.retrieval.vector_retriever import load_bm25_index, retrieve_bm25
 logger = logging.getLogger(__name__)
 
 
-def _extract_excerpt(text: str) -> str:
-    """Extract a verbatim sentence from source text preserving exact wording."""
-    cleaned = re.sub(r"\s+", " ", text).strip()
-    sentences = [part.strip() for part in re.split(r"(?<=[.!?])\s+(?=[A-Z0-9\"'])", cleaned) if part.strip()]
-    return sentences[0] if sentences else cleaned
+def _extract_excerpt(text: str, query: str | None = None) -> str:
+    """Choose a relevant literal sentence, without whitespace or wording rewrites."""
+    sentences = []
+    for match in re.finditer(r".+?(?:[.!?](?=\s|$)|$)", text, re.S):
+        excerpt = match.group(0).strip()
+        if excerpt:
+            sentences.append(excerpt)
+    if not sentences:
+        return text.strip()
+    if query:
+        from backend.retrieval.vector_retriever import tokenize
+
+        query_terms = {term for term in tokenize(query) if "_" not in term}
+        if query_terms:
+            sentence_terms = [
+                {term for term in tokenize(sentence) if "_" not in term}
+                for sentence in sentences
+            ]
+            best = max(range(len(sentences)), key=lambda i: len(query_terms & sentence_terms[i]))
+            if query_terms & sentence_terms[best]:
+                return sentences[best]
+    return sentences[0]
+
+
+def _deduplicate_ranked_passages(
+    candidates: list[tuple[float, dict[str, Any]]], limit: int,
+) -> list[dict[str, Any]]:
+    """Keep the best passage per cited page and drop near-identical text."""
+    if limit < 1:
+        raise ValueError("limit must be positive")
+    selected: list[dict[str, Any]] = []
+    seen_pages: set[tuple[str, int]] = set()
+    selected_tokens: list[set[str]] = []
+    for _, candidate in candidates:
+        page_key = (str(candidate["source_id"]), int(candidate["page"]))
+        if page_key in seen_pages:
+            continue
+        tokens = set(re.findall(r"[a-z0-9]+", candidate.get("excerpt", "").casefold()))
+        if len(tokens) >= 20 and any(
+            len(tokens & prior) / min(len(tokens), len(prior)) >= 0.9
+            for prior in selected_tokens if len(prior) >= 20
+        ):
+            continue
+        seen_pages.add(page_key)
+        selected_tokens.append(tokens)
+        selected.append(candidate)
+        if len(selected) >= limit:
+            break
+    return selected
 
 
 class TacticalService:
@@ -132,7 +176,7 @@ class TacticalService:
         self._initialized = True
         logger.info("TacticalService successfully initialized (%d fixed chunks loaded).", len(self.fixed_chunks))
 
-    def validate_chunk(self, candidate: dict[str, Any]) -> dict[str, Any] | None:
+    def validate_chunk(self, candidate: dict[str, Any], query: str | None = None) -> dict[str, Any] | None:
         """Validate candidate metadata against the fixed UEFA chunk index."""
         eid = candidate.get("evidence_id")
         if not eid or eid not in self.fixed_chunks:
@@ -152,7 +196,7 @@ class TacticalService:
         source_id = fixed["source_id"]
         source_title = self.source_titles.get(source_id, fixed.get("source_title", source_id))
         citation = fixed.get("citation", f"{source_id} p.{fixed.get('page')}")
-        excerpt = _extract_excerpt(fixed.get("text", candidate.get("text", "")))
+        excerpt = _extract_excerpt(fixed.get("text", candidate.get("text", "")), query)
 
         return {
             "evidence_id": eid,
@@ -335,7 +379,7 @@ class TacticalService:
                 )
                 if not cand:
                     continue
-                valid_dict = self.validate_chunk(cand)
+                valid_dict = self.validate_chunk(cand, question)
                 if not valid_dict:
                     continue
                 fused_score = (
@@ -345,9 +389,10 @@ class TacticalService:
                 combined_candidates.append((fused_score, {**valid_dict, "score": round(fused_score, 4)}))
 
             combined_candidates.sort(key=lambda item: (-item[0], item[1]["evidence_id"]))
-            tactical_passages = [
-                TacticalPassage(**c[1]) for c in combined_candidates[: self.cfg.top_k_tactical]
-            ]
+            distinct_candidates = _deduplicate_ranked_passages(
+                combined_candidates, self.cfg.top_k_tactical
+            )
+            tactical_passages = [TacticalPassage(**candidate) for candidate in distinct_candidates]
             if not tactical_passages:
                 status = "abstained"
                 answer_mode = "abstain"

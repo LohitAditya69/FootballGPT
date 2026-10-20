@@ -17,9 +17,118 @@ MANIFEST = ROOT / "reports/uefa_report_manifest.json"
 SEEDS = ROOT / "reports/evaluation_seed_questions.csv"
 UEFA_OUT = ROOT / "backend/data/uefa_evidence_chunks.jsonl"
 EVENT_OUT = ROOT / "backend/data/question_event_evidence.jsonl"
-WORDS_PER_CHUNK = 300
-WORD_OVERLAP = 40
+MAX_WORDS_PER_CHUNK = 180
 EVENT_RADIUS = 5
+
+
+def normalize_retrieval_text(text: str) -> str:
+    """Normalize layout whitespace for indexing without changing source text."""
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def _sentence_spans(text: str) -> list[tuple[int, int]]:
+    """Return deterministic sentence-like spans, retaining punctuation and wording."""
+    spans: list[tuple[int, int]] = []
+    start = 0
+    for match in re.finditer(r"[.!?](?:[\"'’”)]*)?(?=\s+|$)", text):
+        end = match.end()
+        if text[start:end].strip():
+            spans.append((start, end))
+        start = end
+    if text[start:].strip():
+        spans.append((start, len(text)))
+    return spans
+
+
+def _bounded_sentence_spans(text: str, max_words: int) -> list[tuple[int, int]]:
+    """Split sentences at sentence boundaries, with a hard word bound."""
+    bounded: list[tuple[int, int]] = []
+    for start, end in _sentence_spans(text):
+        sentence = text[start:end]
+        word_matches = list(re.finditer(r"\S+", sentence))
+        if len(word_matches) <= max_words:
+            bounded.append((start, end))
+            continue
+        for offset in range(0, len(word_matches), max_words):
+            group = word_matches[offset : offset + max_words]
+            bounded.append((start + group[0].start(), start + group[-1].end()))
+    return bounded
+
+
+def _page_blocks(page_text: str) -> list[str]:
+    """Separate blank-line paragraphs and keep standalone headings with their section."""
+    blocks: list[str] = []
+    current: list[str] = []
+    for line in page_text.replace("\r\n", "\n").replace("\r", "\n").splitlines():
+        stripped = line.strip()
+        if not stripped:
+            if current:
+                blocks.append("\n".join(current))
+                current = []
+            continue
+        letters = [char for char in stripped if char.isalpha()]
+        is_standalone_heading = (
+            bool(letters)
+            and len(stripped) <= 90
+            and stripped == stripped.upper()
+            and not stripped.endswith((".", ",", ";", ":"))
+        )
+        if is_standalone_heading and current:
+            blocks.append("\n".join(current))
+            current = []
+        current.append(stripped)
+    if current:
+        blocks.append("\n".join(current))
+    return blocks
+
+
+def _layout_columns(page_text: str) -> list[str]:
+    """Separate left/right cells from Poppler's padded layout lines."""
+    rows = [
+        [(match.start(), match.group().strip()) for match in re.finditer(r"\S.*?(?= {4,}|$)", line)]
+        for line in page_text.splitlines()
+    ]
+    starts = sorted({x for row in rows for x, text in row if text})
+    if len(starts) < 2:
+        return [page_text.strip()] if page_text.strip() else []
+    gaps = [(starts[index + 1] - starts[index], starts[index], starts[index + 1]) for index in range(len(starts) - 1)]
+    gap, left_edge, right_edge = max(gaps)
+    if gap < 18:
+        return [page_text.strip()] if page_text.strip() else []
+    split_at = (left_edge + right_edge) / 2
+    columns = [[], []]
+    for row in rows:
+        for x, text in row:
+            columns[int(x >= split_at)].append(text)
+    return ["\n".join(lines) for lines in columns if any(line.strip() for line in lines)]
+
+
+def chunk_page_text(page_text: str, max_words: int = MAX_WORDS_PER_CHUNK) -> list[str]:
+    """Create page-local paragraph/sentence groups with an exact-text trace."""
+    if max_words < 1:
+        raise ValueError("max_words must be positive")
+    chunks: list[str] = []
+    for column_text in _layout_columns(page_text):
+        for raw_paragraph in _page_blocks(column_text):
+            paragraph = raw_paragraph.strip()
+            groups: list[tuple[int, int]] = []
+            group_start: int | None = None
+            group_end: int | None = None
+            group_words = 0
+            for start, end in _bounded_sentence_spans(paragraph, max_words):
+                sentence_words = len(re.findall(r"\S+", paragraph[start:end]))
+                if group_start is not None and group_words + sentence_words > max_words:
+                    groups.append((group_start, group_end or group_start))
+                    group_start = None
+                    group_words = 0
+                if group_start is None:
+                    group_start = start
+                group_end = end
+                group_words += sentence_words
+            if group_start is not None and group_end is not None:
+                groups.append((group_start, group_end))
+            chunks.extend(paragraph[start:end].strip() for start, end in groups)
+    return [chunk for chunk in chunks if chunk]
 
 
 def sha256(path: Path) -> str:
@@ -37,9 +146,23 @@ def write_jsonl(path: Path, records: list[dict]) -> None:
             f.write(json.dumps(record, ensure_ascii=False, separators=(",", ":")) + "\n")
 
 
-def extract_uefa() -> list[dict]:
+def extract_pdf_pages(pdf: Path) -> list[str]:
+    """Extract one layout-preserving text string per page with Poppler."""
     if not shutil.which("pdftotext"):
-        raise RuntimeError("pdftotext is required (install Poppler) to extract the UEFA PDFs")
+        raise RuntimeError("pdftotext (Poppler) is required to extract the locked UEFA PDFs")
+    result = subprocess.run(
+        # Layout mode retains word spacing and page mapping. chunk_page_text()
+        # uses the padded columns to keep parallel report columns separate.
+        ["pdftotext", "-layout", "-enc", "UTF-8", str(pdf), "-"],
+        check=True, capture_output=True, text=True, encoding="utf-8",
+    )
+    pages = result.stdout.split("\f")
+    if pages and not pages[-1].strip():
+        pages.pop()
+    return pages
+
+
+def extract_uefa() -> list[dict]:
     manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
     records: list[dict] = []
     for source in manifest["sources"]:
@@ -49,22 +172,14 @@ def extract_uefa() -> list[dict]:
         actual_hash = sha256(pdf)
         if actual_hash != source["sha256"]:
             raise ValueError(f"SHA-256 differs from locked manifest: {source['file']}")
-        result = subprocess.run(
-            ["pdftotext", "-layout", "-enc", "UTF-8", str(pdf), "-"],
-            check=True, capture_output=True, text=True,
-        )
-        pages = result.stdout.split("\f")
-        if pages and not pages[-1].strip():
-            pages.pop()
+        pages = extract_pdf_pages(pdf)
         if len(pages) != source["pages"]:
             raise ValueError(f"Expected {source['pages']} pages in {pdf.name}, extracted {len(pages)}")
         for page_no, page in enumerate(pages, start=1):
-            words = re.findall(r"\S+", page)
-            if not words:
-                continue
-            step = WORDS_PER_CHUNK - WORD_OVERLAP
-            for chunk_no, start in enumerate(range(0, len(words), step), start=1):
-                chunk_words = words[start : start + WORDS_PER_CHUNK]
+            page_chunks = chunk_page_text(page)
+            word_start = 0
+            for chunk_no, chunk_text in enumerate(page_chunks, start=1):
+                chunk_words = re.findall(r"\S+", chunk_text)
                 if not chunk_words:
                     continue
                 records.append({
@@ -76,11 +191,11 @@ def extract_uefa() -> list[dict]:
                     "page": page_no,
                     "citation": f"{source['source_id']} p.{page_no}",
                     "chunk_index": chunk_no,
-                    "chunk_word_start": start,
-                    "text": " ".join(chunk_words),
+                    "chunk_word_start": word_start,
+                    "text": chunk_text,
+                    "retrieval_text": normalize_retrieval_text(chunk_text),
                 })
-                if start + WORDS_PER_CHUNK >= len(words):
-                    break
+                word_start += len(chunk_words)
     write_jsonl(UEFA_OUT, records)
     return records
 

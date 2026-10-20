@@ -22,13 +22,16 @@ def tokenize(text: str) -> list[str]:
 def build_index(evidence_jsonl: str | Path, output_json: str | Path) -> dict[str, Any]:
     docs = []
     df: Counter[str] = Counter()
-    for line in Path(evidence_jsonl).open(encoding="utf-8"):
-        if not line.strip():
-            continue
-        row = json.loads(line)
-        counts = Counter(tokenize(row["text"]))
-        df.update(counts.keys())
-        docs.append({"evidence_id": row["evidence_id"], "citation": row["citation"], "source_id": row["source_id"], "page": row["page"], "text": row["text"], "tf": counts})
+    with Path(evidence_jsonl).open(encoding="utf-8") as stream:
+        for line in stream:
+            if not line.strip():
+                continue
+            row = json.loads(line)
+            source_text = row["text"]
+            retrieval_text = row.get("retrieval_text", source_text)
+            counts = Counter(tokenize(retrieval_text))
+            df.update(counts.keys())
+            docs.append({"evidence_id": row["evidence_id"], "citation": row["citation"], "source_id": row["source_id"], "page": row["page"], "text": source_text, "tf": counts})
     n = len(docs)
     idf = {term: math.log(1 + (n + 1) / (freq + 1)) for term, freq in df.items()}
     packed_docs = []
@@ -80,14 +83,17 @@ def build_bm25_index(evidence_jsonl: str | Path, *, k1: float = 1.5, b: float = 
     """Build a compact BM25 lexical index using the shared transparent tokenizer."""
     documents = []
     df: Counter[str] = Counter()
-    for line in Path(evidence_jsonl).open(encoding="utf-8"):
-        if not line.strip():
-            continue
-        row = json.loads(line)
-        tokens = tokenize(row["text"])
-        tf = Counter(tokens)
-        df.update(tf.keys())
-        documents.append({**{k: row[k] for k in ("evidence_id", "citation", "source_id", "page", "text")}, "tf": tf, "length": len(tokens)})
+    with Path(evidence_jsonl).open(encoding="utf-8") as stream:
+        for line in stream:
+            if not line.strip():
+                continue
+            row = json.loads(line)
+            source_text = row["text"]
+            retrieval_text = row.get("retrieval_text", source_text)
+            tokens = tokenize(retrieval_text)
+            tf = Counter(tokens)
+            df.update(tf.keys())
+            documents.append({**{k: row[k] for k in ("evidence_id", "citation", "source_id", "page")}, "text": source_text, "tf": tf, "length": len(tokens)})
     if k1 <= 0 or not 0 <= b <= 1:
         raise ValueError("BM25 requires k1 > 0 and 0 <= b <= 1")
     return {"schema_version": "bm25-v1", "k1": k1, "b": b, "document_count": len(documents), "average_length": sum(d["length"] for d in documents) / max(1, len(documents)), "document_frequency": df, "documents": documents}
