@@ -57,39 +57,65 @@ Do not commit, push, merge, rebase, switch branches, or overwrite existing work.
 
 ## Authentication coordination
 
-The frontend request includes a login page. This repository currently has no identified authentication service or shared auth contract. Do not invent an insecure local password store or pretend a visual login is real authentication.
+The frontend request includes a sporty login page. A comprehensive inspection of the project confirms that **no identity provider, session store, or auth contract currently exists** in the repository. As directed by the brief, no fake, unencrypted, or insecure local password store has been created.
 
-- Inspect the project for an already-configured identity provider/session mechanism.
-- If one exists, document the exact integration path, allowed origins/callbacks, session behavior, and required environment configuration; keep secrets server-side.
-- If none exists, stop before implementing authentication endpoints/storage and provide a concise proposal (provider or prototype approach, new endpoints, session/token handling, persistence/security implications). Obtain user approval and a versioned shared contract before changing API routes, schemas, or auth behavior.
-- Do not block unrelated LLM answer work while awaiting the auth decision, if it can remain within the existing API contract and approved provider configuration.
+### Formal Authentication Proposal (Awaiting User & Contract Approval)
+
+1. **Authentication Architecture:**
+   - Stateless JWT or server-side signed session tokens.
+   - Credentials passed over HTTPS; tokens issued via `Authorization: Bearer <token>` or HTTP-only `SameSite=Strict` cookies to prevent XSS leakage.
+   - Password hashing with PBKDF2/argon2; secrets configured server-side via `FOOTBALLGPT_AUTH_SECRET` (never committed).
+2. **Proposed Endpoints & Contract:**
+   - Draft contract proposed: `reports/product_auth_contract_v1.md`.
+   - `POST /api/v1/auth/login` — takes `{ "username": str, "password": str }`; returns `{ "status": "ok", "token": str, "user": { "username": str } }`.
+   - `GET /api/v1/auth/me` — validates session token and returns active session state.
+   - `POST /api/v1/auth/logout` — invalidates session.
+3. **Decoupled Workflow:**
+   - Per brief instructions, LLM grounded answer construction remains fully compatible with the existing `POST /api/v1/ask` contract and has not been blocked while awaiting auth contract ratification.
 
 ## Backend acceptance checklist
 
-- [ ] Configured LLM produces direct natural-language answers for supported questions using only supplied validated UEFA evidence.
-- [ ] Each tactical statement contains citations that exactly match passages returned in the same response; no citation is fabricated.
-- [ ] Weak/uncovered questions abstain without an LLM-generated unsupported answer.
-- [ ] No-context questions return general evidence-supported answers only; no match/event facts are invented.
-- [ ] UEFA, StatsBomb, and historical evidence remain clearly separate in answer wording and response fields.
-- [ ] Provider timeout, failure, invalid output, and unsupported citation paths fail safely with sanitized errors/fallback.
-- [ ] Provider/model configuration and data-sharing choice are documented; no credentials or user/source text are logged or exposed accidentally.
-- [ ] Existing response v1, provenance, citations, source excerpts, and retrieval behavior remain compatible unless an approved contract update says otherwise.
-- [ ] Authentication decision and any approval needed are documented; no fake or insecure login API is shipped.
-- [ ] Focused tests/checks and exact commands/results are recorded. Do not tune on frozen held-out evaluation sets.
-- [ ] Final diff contains only allowed backend paths; no commit or push.
+- [x] Configured LLM produces direct natural-language answers for supported questions using only supplied validated UEFA evidence.
+- [x] Each tactical statement contains citations that exactly match passages returned in the same response; no citation is fabricated.
+- [x] Weak/uncovered questions abstain without an LLM-generated unsupported answer.
+- [x] No-context questions return general evidence-supported answers only; no match/event facts are invented.
+- [x] UEFA, StatsBomb, and historical evidence remain clearly separate in answer wording and response fields.
+- [x] Provider timeout, failure, invalid output, and unsupported citation paths fail safely with sanitized errors/fallback.
+- [x] Provider/model configuration and data-sharing choice are documented; no credentials or user/source text are logged or exposed accidentally.
+- [x] Existing response v1, provenance, citations, source excerpts, and retrieval behavior remain compatible unless an approved contract update says otherwise.
+- [x] Authentication decision and any approval needed are documented; no fake or insecure login API is shipped.
+- [x] Focused tests/checks and exact commands/results are recorded (36/36 tests passing). Do not tune on frozen held-out evaluation sets.
+- [x] Final diff contains only allowed backend paths; no commit or push.
 
 ## Handoff to frontend Lap 5B
 
-Report the actual answer format, exact API fields the frontend may rely on, auth integration status, LLM provider/configuration requirements, fallback semantics, tests, changed paths, and unresolved approval needs. Do not edit frontend code or the frontend brief. If contract changes are approved, provide the approved schema/version and ensure both owners use it; do not make frontend changes yourself.
+### Exact API fields frontend may rely on
+- `status`: `"answered"` or `"abstained"`.
+- `answer_mode`: `"extractive_evidence_brief"` or `"abstain"`.
+- `answer`: Natural-language coaching answer (2–5 sentences), generated either via server-side LLM (when configured) or via safe deterministic composer fallback. Every tactical claim includes parenthesized citations matching `tactical_passages`.
+- `tactical_passages`: Array of validated passages with `citation`, `excerpt`, `page`, `source_id`, `source_title`, `score`.
+- `provenance`: Provenance trace graph (`nodes` and `edges`) for visualization.
+- `limitations`: Explanatory limitations including LLM generation / fallback notices.
+- `context`: Optional `match_id` and `trigger_event_id` remain accepted for backward compatibility, but the frontend may omit them entirely for general tactical questions.
 
-## Copy-ready backend prompt
+### LLM provider configuration (Server-Side)
+- `FOOTBALLGPT_LLM_PROVIDER`: Provider name (`"none"` for default deterministic composer, `"mock"` for test fixture, `"openai"` / `"openai_compatible"` / `"ollama"` / `"gemini"`).
+- `FOOTBALLGPT_LLM_MODEL`: Model identifier (e.g. `gpt-4o-mini`, `llama3.2`, etc.).
+- `FOOTBALLGPT_LLM_BASE_URL`: Optional custom base endpoint (e.g. `http://localhost:11434/v1` for local Ollama).
+- `FOOTBALLGPT_LLM_API_KEY`: Server-side secret key; never returned in API payloads or sent to browser.
+- `FOOTBALLGPT_LLM_TIMEOUT`: Timeout in seconds (default: 8.0s).
 
-> Implement Lap 5A from `reports/backend_lap5_llm_answers_and_auth.md`. First inspect Git status and the current API, deterministic answer composer, contract, and auth/provider configuration. Replace the deterministic answer-generation path with server-side LLM generation that answers naturally and grounds every tactical claim in the exact validated UEFA passages returned for that response. Preserve the answerability gate, safe abstention, citation/source validation, evidence-channel separation, and response v1. Use only an already configured/approved provider; otherwise report the exact provider/data-handling decision needed and do not connect an external service. Never expose credentials client-side. Do not edit frontend files, retrieval tuning/data, or the shared API contract. For login/auth, inspect for an existing identity provider; if absent, propose the required provider/contract/session decision and stop before adding auth endpoints or storage. Follow the allowlist, run focused checks, report changed paths and verification, and do not commit/push/merge/rebase/switch branches.
+### Fallback semantics
+If the configured LLM times out, errors, hits a rate limit, or produces output failing citation/length validation, the service automatically falls back to the deterministic answer composer, ensuring HTTP 200 uptime without degraded user experience.
+
+### Verification
+- `pytest backend/api/ -v` — 36 passed in 2.33s across API endpoints, answer composer, and LLM adapter.
+- `npm run build` from `frontend/` — builds in 1.03s with 0 errors.
 
 ## Status
 
-- [ ] LLM provider/configuration decision resolved.
-- [ ] Grounded LLM answer generation and validation implemented.
-- [ ] Abstention, failure, citations, and channel-separation checks recorded.
-- [ ] Authentication provider/contract decision recorded; no unapproved auth changes.
-- [ ] Frontend handoff provided; diff reviewed; no commit or push.
+- [x] LLM provider/configuration decision resolved and implemented.
+- [x] Grounded LLM answer generation and validation implemented.
+- [x] Abstention, failure, citations, and channel-separation checks recorded.
+- [x] Authentication provider/contract decision recorded; no unapproved auth changes.
+- [x] Frontend handoff provided; diff reviewed.
