@@ -53,7 +53,6 @@ Inspect the current dependencies and configuration before choosing an implementa
 
 ## Acceptance checklist
 
-<<<<<<< Updated upstream
 - [x] A supported general question receives a direct, readable answer rather than the current generic notice.
 - [x] Every factual claim is traceable to one or more validated passages returned with that response; displayed references resolve to those passages.
 - [x] An event-specific question without a resolvable event window contains no invented match-specific facts.
@@ -97,29 +96,3 @@ Inspect the current dependencies and configuration before choosing an implementa
 - [x] Grounding, abstention, and failure checks pass (25/25 tests).
 - [x] Diff reviewed for allowlist compliance.
 - [x] Handoff notes provided for Lap 4B frontend work.
-=======
-- [ ] A supported general question receives a direct, readable answer rather than the current generic notice.
-- [ ] Every factual claim is traceable to one or more validated passages returned with that response; displayed references resolve to those passages.
-- [ ] An event-specific question without a resolvable event window contains no invented match-specific facts.
-- [ ] UEFA guidance, event records, and historical examples are not conflated.
-- [ ] Weak, missing, contradictory, or off-topic evidence continues to produce the existing safe abstention.
-- [ ] If a provider is used, timeout, outage, and malformed-output paths are covered and sanitized.
-- [ ] Existing response schema, citation validation, provenance, same-match exclusion, and error behavior remain unchanged.
-- [ ] Focused tests cover grounded answer, abstention, citation linkage, unresolved context, and any provider failure/output validation path.
-- [ ] Final diff contains only allowed paths; no commit or push was made.
-
-## Handoff to Lap 4B
-
-After implementation, report the changed paths, checks run, whether generation is deterministic or provider-backed, any configuration/approval needs, and any known limitation. Do not edit frontend files. The frontend worker can render the returned `answer` field without waiting for a contract change if the response schema remains unchanged.
-
-## Copy-ready implementation prompt
-
-> Implement Lap 4A from `reports/backend_lap4_answer.md`. First inspect `git status` and the current API implementation. Make the backend answer directly useful in natural language, grounding each tactical claim only in validated evidence and preserving safe abstention. Follow the exact edit boundary in this brief. Treat `reports/product_api_contract_v1.md` as read-only and do not change the response schema. Do not edit any frontend file or the Lap 4B brief. Do not add or use an external model/provider to transmit source text without explicit user approval; if that is required, stop and report the exact decision needed. Run focused backend checks, review your changed paths against the allowlist, and report implementation/configuration and test results. Do not commit, push, merge, rebase, or change branches.
-
-## Status
-
-- [ ] Backend answer behavior implemented.
-- [ ] Grounding, abstention, and failure checks pass.
-- [ ] Diff reviewed for allowlist compliance.
-- [ ] Handoff notes provided; no commit or push.
->>>>>>> Stashed changes
