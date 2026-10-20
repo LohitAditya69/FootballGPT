@@ -1,9 +1,4 @@
-"""Deterministic grounded natural-language answer composer for FootballGPT Lap 4A.
-
-Composes concise, grounded answers in natural coaching-analysis language (2–5 short sentences),
-anchoring every tactical claim in validated UEFA passages while preserving strict evidence
-channel separation and existing abstention behavior.
-"""
+"""Conservative, citation-verifiable composition from validated UEFA excerpts."""
 
 from __future__ import annotations
 
@@ -18,75 +13,102 @@ GENERIC_ABSTENTION_NOTICE = (
     "abstain pending source review."
 )
 
+_CITATION_RE = re.compile(r"\((uefa-[a-z0-9-]+\s+p\.\d+)\)")
+_SENTENCE_RE = re.compile(r".+?(?:[.!?](?=\s|$)|$)", re.S)
+_WORD_RE = re.compile(r"[a-z]{3,}")
+_STOP_WORDS = {
+    "after", "about", "against", "also", "and", "are", "ball", "can", "could", "does",
+    "for", "from", "how", "into", "its", "our", "should", "team", "the", "their",
+    "them", "then", "they", "this", "through", "when", "what", "with", "would",
+}
+
 
 def clean_text_artifacts(text: str) -> str:
-    """Sanitize encoding anomalies, quotes, and whitespace in source text."""
-    t = text.replace("\ufffd", "'").replace("“", '"').replace("”", '"').replace("‘", "'").replace("’", "'")
-    t = re.sub(r"[\xa0\t]+", " ", t)
-    t = re.sub(r"\b[A-Z\s]{4,}\b", " ", t)
-    t = re.sub(r"\s+", " ", t).strip()
-    return t
-
-
-def is_clean_tactical_sentence(s: str) -> bool:
-    """Filter out tabular lines, drills/session organisation, and malformed fragments."""
-    s = s.strip()
-    if len(s) < 35 or len(s) > 260:
-        return False
-    # Avoid tables, drills, results, goal-scoring logs, or front-matter fragments
-    if re.search(
-        r"(?:per 90|table of contents|roll of honour|session organisation|goalkeepers|"
-        r"matchday \d+ results|group [a-z]|drill|oranges|purple team|how the goal was scored|"
-        r"coaching points\s*[•]|\b\d+\s*players\b)",
-        s,
-        re.I,
-    ):
-        return False
-    # Avoid high-ratio uppercase headings
-    uppers = sum(1 for c in s if c.isupper())
-    if uppers / len(s) > 0.30:
-        return False
-    # Avoid stat-heavy rows
-    digits = sum(1 for c in s if c.isdigit())
-    if digits / len(s) > 0.08:
-        return False
-    words = s.split()
-    if len(words) < 6:
-        return False
-    return True
+    """Normalize whitespace only; source wording and encoding remain evidence, not prose to rewrite."""
+    return re.sub(r"\s+", " ", text).strip()
 
 
 def clean_coaching_clause(text: str) -> str:
-    """Clean tactical clauses into natural coaching statements."""
-    t = text.strip()
-    t = t.replace("\ufffd", "'").replace("“", '"').replace("”", '"').replace("‘", "'").replace("’", "'")
-    t = re.sub(r"[\xa0\t]+", " ", t)
-    # Remove leading quotes and bullets
-    t = re.sub(r'^[“"\'\s•\-–—\*]+', "", t)
-    # Remove trailing reporter/speaker attributions
-    t = re.sub(
-        r'[,–—\-]?\s*(?:said|adds|added|explained|noted|continued|concluded|says)\s+[A-Za-z\s\.\-]+(?:\.|$)',
-        "",
-        t,
+    """Compatibility helper that only normalizes whitespace, never edits evidence wording."""
+    return clean_text_artifacts(text)
+
+
+def is_clean_tactical_sentence(sentence: str) -> bool:
+    """Reject obviously noisy, tabular, or incomplete source lines without rewriting them."""
+    visible = sentence.lstrip("\"'“‘([{ ")
+    return (
+        35 <= len(sentence) <= 500
+        and bool(visible)
+        and visible[0].isupper()
+        and sentence.rstrip().endswith((".", "!", "?", "\"", "'", "”", "’"))
+        and "\ufffd" not in sentence
+        and not re.search(r"\d", sentence)
+        and not re.search(r"\b(?:table|contents|roll of honour|session organisation|drill)\b", sentence, re.I)
     )
-    t = re.sub(
-        r'[,–—\-]?\s*[A-Z][a-zA-Z\s\.\-]+\s+(?:said|adds|added|explained|noted|continued|concluded|says)(?:\.|$)',
-        "",
-        t,
-    )
-    # Remove leading observer prefixes
-    t = re.sub(
-        r"^(?:Indeed,\s*)?(?:adds|added|according to|as highlighted by|for)\s+[A-Z][a-zA-Z\s\.\-]+,\s*",
-        "",
-        t,
-        flags=re.I,
-    )
-    # Remove trailing quotes
-    t = re.sub(r'["\']+$', "", t)
-    t = re.sub(r"\s+", " ", t).strip()
-    if t and t[0].islower():
-        t = t[0].upper() + t[1:]
-    return t.rstrip(".,;: ")
+
+
+def _source_sentences(text: str) -> list[str]:
+    # Keep line breaks and source characters intact so API excerpts remain literal substrings.
+    return [m.group(0).strip() for m in _SENTENCE_RE.finditer(text) if m.group(0).strip()]
+
+
+def _is_regain_question(question: str) -> bool:
+    q = question.casefold()
+    return bool(re.search(r"\b(?:winning|win|regain|regaining|recovering|recover)\b.{0,35}\b(?:ball|possession)\b", q))
+
+
+def _directly_responsive(sentence: str, question: str) -> bool:
+    """Require an explicit topic/action link; retrieval rank is deliberately not used."""
+    s = sentence.casefold()
+    if not is_clean_tactical_sentence(sentence):
+        return False
+    if _is_regain_question(question):
+        regain_anchor = bool(re.search(
+            r"\b(?:after|when|once|following)\s+(?:winning|regaining|recovering)\s+(?:the\s+)?(?:ball|possession)\b|"
+            r"\b(?:after|when|following)\s+(?:a\s+)?(?:high\s+)?regain\b",
+            s,
+        ))
+        response_action = bool(re.search(
+            r"\b(?:pass|play|attack|forward|transition|counter|move|look|carry|progress|space)\w*\b", s
+        ))
+        return regain_anchor and response_action
+
+    q_tokens = {w for w in _WORD_RE.findall(question.casefold()) if w not in _STOP_WORDS}
+    s_tokens = set(_WORD_RE.findall(s))
+    overlap = q_tokens & s_tokens
+    # Short queries can be supported by one uncommon shared term; otherwise require two.
+    return bool(overlap) and (len(overlap) >= 2 or len(q_tokens) <= 2)
+
+
+def select_direct_passages(
+    passages: list[TacticalPassage],
+    question: str,
+    fixed_chunks: dict[str, dict[str, Any]] | None = None,
+) -> list[TacticalPassage]:
+    """Keep only a single passage with an explicit, clean response to the question."""
+    del fixed_chunks  # Excerpts were already selected from and validated against the fixed chunk index.
+    responsive: list[tuple[TacticalPassage, str]] = []
+    for passage in passages:
+        for sentence in _source_sentences(passage.excerpt):
+            if _directly_responsive(sentence, question):
+                responsive.append((passage, sentence))
+                break
+    if not responsive:
+        return []
+
+    # If two directly responsive source sentences make the same claim with
+    # opposite polarity, do not resolve the disagreement using retrieval rank.
+    for index, (_, left) in enumerate(responsive):
+        left_tokens = {w for w in _WORD_RE.findall(left.casefold()) if w not in _STOP_WORDS}
+        left_negated = bool(re.search(r"\b(?:not|never|no|cannot|can't|shouldn't)\b", left.casefold()))
+        for _, right in responsive[index + 1:]:
+            right_tokens = {w for w in _WORD_RE.findall(right.casefold()) if w not in _STOP_WORDS}
+            right_negated = bool(re.search(r"\b(?:not|never|no|cannot|can't|shouldn't)\b", right.casefold()))
+            shared = left_tokens & right_tokens
+            if len(shared) >= 3 and left_negated != right_negated:
+                return []
+    passage, sentence = responsive[0]
+    return [passage.model_copy(update={"excerpt": sentence})]
 
 
 def extract_best_grounded_points(
@@ -94,72 +116,16 @@ def extract_best_grounded_points(
     fixed_chunks: dict[str, dict[str, Any]] | None,
     question: str,
 ) -> list[tuple[str, str]]:
-    """Extract clean tactical observation clauses paired with their exact citation."""
-    points: list[tuple[str, str]] = []
-    q_tokens = set(re.findall(r"\b[a-z]{3,}\b", question.lower()))
-    stop = {
-        "what",
-        "when",
-        "where",
-        "which",
-        "while",
-        "should",
-        "could",
-        "would",
-        "about",
-        "team",
-        "players",
-        "their",
-        "with",
-        "from",
-        "that",
-        "this",
-        "does",
-        "have",
-    }
-    tactical_tokens = q_tokens - stop
-
-    seen_citations: set[str] = set()
-
-    for p in passages:
-        if p.citation in seen_citations:
-            continue
-        full_text = fixed_chunks.get(p.evidence_id, {}).get("text", "") if fixed_chunks else ""
-        raw_text = full_text or p.excerpt
-        cleaned = clean_text_artifacts(raw_text)
-
-        candidate_sentences = [
-            s.strip()
-            for s in re.split(r"(?<=[.!?])\s+", cleaned)
-            if s.strip() and is_clean_tactical_sentence(s)
-        ]
-
-        if candidate_sentences:
-            scored: list[tuple[float, str]] = []
-            for cand in candidate_sentences:
-                cand_tokens = set(re.findall(r"\b[a-z]{3,}\b", cand.lower()))
-                overlap = len(cand_tokens & tactical_tokens)
-                length_bonus = 0.5 if 40 <= len(cand) <= 200 else 0.0
-                scored.append((overlap + length_bonus, cand))
-            scored.sort(key=lambda x: -x[0])
-            best_raw = scored[0][1]
-        else:
-            best_raw = clean_text_artifacts(p.excerpt)[:180]
-
-        statement = clean_coaching_clause(best_raw)
-        if len(statement) >= 20:
-            points.append((statement, p.citation))
-            seen_citations.add(p.citation)
-            if len(points) >= 3:
-                break
-
-    return points
+    selected = select_direct_passages(passages, question, fixed_chunks)
+    if not selected:
+        return []
+    return [(selected[0].excerpt, selected[0].citation)]
 
 
 def count_sentences(text: str) -> int:
-    """Count sentences accurately taking into account parenthesized citations."""
-    sents = [s.strip() for s in re.split(r"(?<=[.!?])\s+(?=[A-Z0-9\"'])", text.strip()) if s.strip()]
-    return len(sents)
+    """Count sentence boundaries while treating parenthesized citations as inline material."""
+    without_citations = _CITATION_RE.sub("", text.strip())
+    return len([part for part in _source_sentences(without_citations) if part])
 
 
 def compose_grounded_answer(
@@ -170,77 +136,18 @@ def compose_grounded_answer(
     unresolved_event_context: bool = False,
     fixed_chunks: dict[str, dict[str, Any]] | None = None,
 ) -> str:
-    """Compose a concise 2-5 sentence answer grounded in validated UEFA passages.
-
-    Preserves evidence channel separation:
-    - UEFA passages support general tactical principles.
-    - StatsBomb records describe only recorded on-ball event context.
-    - Historical examples illustrate similar recorded cases, not coaching proof.
-    - Unresolved event queries explicitly note limitation rather than inventing match facts.
-    """
-    if not tactical_passages:
-        return GENERIC_ABSTENTION_NOTICE
-
+    """Return one exact, directly responsive UEFA sentence, or the existing abstention."""
+    del event_evidence, historical_examples, unresolved_event_context
     points = extract_best_grounded_points(tactical_passages, fixed_chunks, question)
     if not points:
-        # Fallback to direct citation of the top passage excerpt
-        p0 = tactical_passages[0]
-        excerpt_clean = clean_coaching_clause(clean_text_artifacts(p0.excerpt))
-        points = [(excerpt_clean, p0.citation)]
+        return GENERIC_ABSTENTION_NOTICE
+    sentence, citation = points[0]
+    return f"{sentence} ({citation})"
 
-    sentences: list[str] = []
 
-    # 1. Primary tactical principle (Sentence 1 - Direct Answer)
-    stmt1, cit1 = points[0]
-    sentences.append(f"{stmt1} ({cit1}).")
-
-    # 2. Secondary tactical detail (Sentence 2)
-    if len(points) > 1:
-        stmt2, cit2 = points[1]
-        second_char_lower = stmt2[0].lower() + stmt2[1:] if len(stmt2) > 1 else stmt2
-        if stmt2.lower() != stmt1.lower():
-            sentences.append(f"In execution, {second_char_lower} ({cit2}).")
-        else:
-            sentences.append(f"Tactical analysis notes this principle requires coordinated positioning and situational awareness ({cit1}).")
-    else:
-        # Single passage: provide supporting operational detail
-        sentences.append(f"Coaching evaluation stresses maintaining team shape and disciplined execution to support this principle ({cit1}).")
-
-    # 3. Third passage or complementary nuance if space permits (Sentence 3 if no event)
-    if len(points) > 2 and not event_evidence and not unresolved_event_context and len(sentences) < 3:
-        stmt3, cit3 = points[2]
-        third_char_lower = stmt3[0].lower() + stmt3[1:] if len(stmt3) > 1 else stmt3
-        sentences.append(f"Furthermore, {third_char_lower} ({cit3}).")
-
-    # 4. Context & Channel Separation (Rule 5 & 6)
-    if event_evidence:
-        sentences.append(
-            f"Recorded match event evidence registers an on-ball {event_evidence.trigger_event_type} at "
-            f"{event_evidence.trigger_timestamp} (match {event_evidence.match_id}), describing the local event sequence."
-        )
-    elif unresolved_event_context:
-        sentences.append(
-            "Note that specific match context could not be resolved from provided event identifiers, "
-            "so this analysis cannot assess the specific match situation."
-        )
-
-    # 5. Historical channel notice if historical examples exist and sentence count allows
-    if historical_examples and len(sentences) < 4:
-        sentences.append(
-            "Historical event examples illustrate similar recorded sequences from the training split but do not constitute coaching recommendations."
-        )
-
-    # Ensure sentence count is strictly between 2 and 5
-    combined = " ".join(sentences).strip()
-    s_count = count_sentences(combined)
-
-    # Bounded output sanitization
-    if s_count > 5:
-        # Trim to 4 sentences
-        parts = [s.strip() for s in re.split(r"(?<=[.!?])\s+", combined) if s.strip()]
-        combined = " ".join(parts[:4])
-
-    return combined
+def _normalize_claim(text: str) -> str:
+    value = clean_text_artifacts(text)
+    return value.rstrip(".!? ")
 
 
 def validate_grounded_answer(
@@ -248,38 +155,30 @@ def validate_grounded_answer(
     passages: list[TacticalPassage],
     is_abstained: bool = False,
 ) -> tuple[bool, str]:
-    """Validate that the composed answer adheres to Lap 4A/5A grounding and contract rules."""
+    """Require every answered sentence to be an exact sentence from its cited response passage."""
     if is_abstained:
-        if not answer:
-            return False, "Abstention answer is empty"
-        return True, "Valid abstention"
+        return (bool(answer.strip()), "Valid abstention" if answer.strip() else "Abstention answer is empty")
+    if not answer.strip() or len(answer) > 2000:
+        return False, "Answer is empty or exceeds the length bound"
+    if not 1 <= count_sentences(answer) <= 3:
+        return False, f"Answer must contain 1-3 sentences, got {count_sentences(answer)}"
 
-    s_count = count_sentences(answer)
-    if not (2 <= s_count <= 5):
-        return False, f"Answer must contain 2-5 sentences, got {s_count}"
-
-    # Verify no forbidden boilerplate starter in answered response
-    forbidden_starters = [
-        "according to uefa technical analysis",
-        "evidence review",
-        "evidence brief",
-    ]
-    for starter in forbidden_starters:
-        if answer.lower().startswith(starter):
-            return False, f"Answer starts with forbidden boilerplate prefix '{starter}'"
-
-    # Extract all parenthesized citations from the answer
-    found_citations = re.findall(r"\((uefa-[a-z0-9\-]+\s+p\.\d+)\)", answer)
-    if not found_citations:
-        return False, "Answer contains no parenthesized UEFA citations"
-
-    valid_cits = {p.citation for p in passages}
-    for cit in found_citations:
-        if cit not in valid_cits:
-            return False, f"Citation '{cit}' does not resolve to returned tactical passages"
-
-    # Verify no generic boilerplate notice in answered response
-    if "Retrieved source passages are shown verbatim below" in answer:
-        return False, "Answer contains forbidden generic boilerplate"
-
-    return True, "Valid grounded answer"
+    passage_by_citation = {p.citation: p for p in passages}
+    matches = list(_CITATION_RE.finditer(answer))
+    if len(matches) != count_sentences(answer):
+        return False, "Every tactical sentence must contain exactly one citation"
+    previous_end = 0
+    for match in matches:
+        citation = match.group(1)
+        passage = passage_by_citation.get(citation)
+        if passage is None:
+            return False, f"Citation '{citation}' does not resolve to returned tactical passages"
+        claim = answer[previous_end:match.start()].strip().lstrip(". ")
+        if not claim:
+            return False, "Citation must immediately follow the supported claim"
+        if _normalize_claim(claim) not in {_normalize_claim(s) for s in _source_sentences(passage.excerpt)}:
+            return False, f"Claim is not entailed verbatim by cited passage '{citation}'"
+        previous_end = match.end()
+    if answer[previous_end:].strip(" ."):
+        return False, "Unsupported text follows the final citation"
+    return True, "Valid exact-source grounded answer"
