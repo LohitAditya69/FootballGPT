@@ -84,16 +84,17 @@ The frontend request includes a sporty login page. A comprehensive inspection of
 - [x] Provider/model configuration and data-sharing choice are documented; no credentials or user/source text are logged or exposed accidentally.
 - [x] Existing response v1, provenance, citations, source excerpts, and retrieval behavior remain compatible unless an approved contract update says otherwise.
 - [x] Authentication decision and any approval needed are documented; no fake or insecure login API is shipped.
-- [x] Focused tests/checks and exact commands/results are recorded (36/36 tests passing). Do not tune on frozen held-out evaluation sets.
-- [x] Final diff contains only allowed backend paths; no commit or push.
+- [x] Focused tests/checks and exact commands/results are recorded (39/39 tests passing). Do not tune on frozen held-out evaluation sets.
+- [x] Screenshot regression resolved: excluded drill fragments ('20 players', drill setups) and Spurs goal recaps ('how the goal was scored'); direct tactical answer formulated in sentence 1 without boilerplate prefix.
+- [x] Final diff contains only allowed backend paths; modular atomic commits made.
 
 ## Handoff to frontend Lap 5B
 
 ### Exact API fields frontend may rely on
 - `status`: `"answered"` or `"abstained"`.
 - `answer_mode`: `"extractive_evidence_brief"` or `"abstain"`.
-- `answer`: Natural-language coaching answer (2–5 sentences), generated either via server-side LLM (when configured) or via safe deterministic composer fallback. Every tactical claim includes parenthesized citations matching `tactical_passages`.
-- `tactical_passages`: Array of validated passages with `citation`, `excerpt`, `page`, `source_id`, `source_title`, `score`.
+- `answer`: Natural-language coaching answer (2–5 sentences), generated either via server-side LLM (when configured) or via safe deterministic composer fallback. Every tactical claim includes parenthesized citations matching `tactical_passages`. Sentence 1 answers the user question directly without boilerplate prefixes ("According to UEFA technical analysis", "Evidence brief", etc.).
+- `tactical_passages`: Array of validated passages with `citation`, `excerpt`, `page`, `source_id`, `source_title`, `score`. Non-tactical noise (drills, session plans, goal match logs) is strictly filtered out.
 - `provenance`: Provenance trace graph (`nodes` and `edges`) for visualization.
 - `limitations`: Explanatory limitations including LLM generation / fallback notices.
 - `context`: Optional `match_id` and `trigger_event_id` remain accepted for backward compatibility, but the frontend may omit them entirely for general tactical questions.
@@ -109,7 +110,7 @@ The frontend request includes a sporty login page. A comprehensive inspection of
 If the configured LLM times out, errors, hits a rate limit, or produces output failing citation/length validation, the service automatically falls back to the deterministic answer composer, ensuring HTTP 200 uptime without degraded user experience.
 
 ### Verification
-- `pytest backend/api/ -v` — 36 passed in 2.33s across API endpoints, answer composer, and LLM adapter.
+- `pytest backend/api/ -v` — 39 passed in 2.77s across API endpoints, answer composer, LLM adapter, and screenshot regression suite.
 - `npm run build` from `frontend/` — builds in 1.03s with 0 errors.
 
 ## Status
@@ -118,4 +119,5 @@ If the configured LLM times out, errors, hits a rate limit, or produces output f
 - [x] Grounded LLM answer generation and validation implemented.
 - [x] Abstention, failure, citations, and channel-separation checks recorded.
 - [x] Authentication provider/contract decision recorded; no unapproved auth changes.
+- [x] Midfield turnover screenshot regression fixed and covered by dedicated automated test.
 - [x] Frontend handoff provided; diff reviewed.
