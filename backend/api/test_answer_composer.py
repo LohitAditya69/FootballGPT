@@ -26,10 +26,12 @@ def _passage(citation: str, excerpt: str, score: float = 0.8) -> TacticalPassage
     )
 
 
-def test_answer_uses_single_direct_source_sentence_and_exact_citation() -> None:
+def test_answer_synthesizes_supported_own_half_and_mid_block_claims() -> None:
     relevant = _passage(
         "uefa-uwcl-2024-25 p.69",
-        "After winning the ball in their own half, the first pass was usually played directly deep or diagonally.",
+        "When the ball was regained in their own half they were willing to play forward early into their highest attacking player or into the space beyond the back line. "
+        "After winning the ball in their own half, the first pass was usually played directly deep or diagonally to the outside attacking players. "
+        "There was also a different approach when the ball was regained in the mid-block where they tended to play for possession and ball protection.",
     )
     irrelevant_top = _passage(
         "uefa-uel-2024-25 p.69",
@@ -39,8 +41,11 @@ def test_answer_uses_single_direct_source_sentence_and_exact_citation() -> None:
     selected = select_direct_passages([irrelevant_top, relevant], question)
     answer = compose_grounded_answer(question, selected)
     assert selected == [relevant]
-    assert answer == f"{relevant.excerpt} ({relevant.citation})"
-    assert count_sentences(answer) == 1
+    assert "After a regain in your own half" in answer
+    assert "direct or diagonal pass" in answer
+    assert "If possession is regained in a mid-block" in answer
+    assert answer.count(f"({relevant.citation})") == 2
+    assert count_sentences(answer) == 2
     assert validate_grounded_answer(answer, selected)[0]
 
 
@@ -65,7 +70,7 @@ def test_citation_membership_does_not_allow_unsupported_claim() -> None:
     answer = "Full-backs should sprint forward immediately to exploit the space (uefa-ucl-2024-25 p.23)."
     valid, reason = validate_grounded_answer(answer, [passage])
     assert not valid
-    assert "not entailed verbatim" in reason
+    assert "not supported by a recognized" in reason
 
 
 def test_every_claim_requires_an_adjacent_valid_citation() -> None:
