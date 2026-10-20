@@ -86,7 +86,7 @@ def clean_coaching_clause(text: str) -> str:
     t = re.sub(r"\s+", " ", t).strip()
     if t and t[0].islower():
         t = t[0].upper() + t[1:]
-    return t.rstrip(". ")
+    return t.rstrip(".,;: ")
 
 
 def extract_best_grounded_points(
