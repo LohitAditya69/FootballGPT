@@ -19,3 +19,10 @@
 ## Remaining integration checks
 
 After an approved auth integration and reachable backend are available, verify one supported answer, one abstention, recoverable API errors, missing provenance, question-only request handling, and the login session lifecycle. Complete visual checks at approximately 320/768/1280 px and keyboard/screen-reader review.
+
+## Follow-up correction — answer-first and standalone login
+
+- Replaced the response panel/route heading with **Tactical answer** and promoted the answer card typographically. The login route now hides the global header, footer, intro, and workspace and centers the cream login card within the full-viewport forest background.
+- Supporting passages, returned event/history records, provenance, and limitations are grouped below a **Supporting material** heading. Abstentions are labeled **No supported answer available** and are not presented as successful recommendations.
+- Exact citation strings in the answer are linked to their matching passage card only when that citation uniquely identifies one returned passage. Link labels preserve the API text exactly; answer wording is not rewritten.
+- Rechecked frontend build after this follow-up. Browser screenshot/responsive and screen-reader checks remain outstanding. These follow-up edits are local and have not been committed or pushed.
