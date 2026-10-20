@@ -38,7 +38,9 @@ class Lap10DirectAnswerTests(unittest.TestCase):
         self.regain = passage(
             "uefa-uwcl-2024-25:p69:c4",
             "uefa-uwcl-2024-25 p.69",
-            "After winning the ball in their own half, the first pass was usually played directly deep or diagonally to the outside attacking players.",
+            "When the ball was regained in their own half they were willing to play forward early into their highest attacking player or into the space beyond the back line. "
+            "After winning the ball in their own half, the first pass was usually played directly deep or diagonally to the outside attacking players or the top player for a long pass behind the back line, explained Carlson. "
+            "There was also a different approach when the ball was regained in the mid-block where they tended to play for possession and ball protection.",
             0.4,
         )
         self.irrelevant_top = passage(
@@ -48,13 +50,29 @@ class Lap10DirectAnswerTests(unittest.TestCase):
             1.0,
         )
 
-    def test_winning_ball_uses_one_direct_source_sentence(self) -> None:
+    def test_winning_ball_synthesizes_both_supported_conditions(self) -> None:
         question = "How should a team respond after winning the ball?"
         selected = select_direct_passages([self.irrelevant_top, self.regain], question)
         self.assertEqual([p.citation for p in selected], [self.regain.citation])
         answer = compose_grounded_answer(question, selected)
-        self.assertEqual(answer, f"{self.regain.excerpt} ({self.regain.citation})")
-        self.assertTrue(validate_grounded_answer(answer, selected)[0])
+        self.assertIn("After a regain in your own half", answer)
+        self.assertIn("If possession is regained in a mid-block", answer)
+        self.assertEqual(answer.count(f"({self.regain.citation})"), 2)
+        self.assertNotIn("After winning the ball in their own half, the first pass", answer)
+        self.assertTrue(validate_grounded_answer(answer, selected, question=question)[0])
+
+    def test_one_supported_condition_produces_one_coaching_claim(self) -> None:
+        single = passage(
+            "uefa-ucl-2024-25:p68:c1", "uefa-ucl-2024-25 p.68",
+            "When the ball was regained in their own half they were willing to play forward early into their highest attacking player or into the space beyond the back line.",
+            0.8,
+        )
+        question = "How should a team respond after winning the ball?"
+        selected = select_direct_passages([single], question)
+        answer = compose_grounded_answer(question, selected)
+        self.assertEqual(answer.count(f"({single.citation})"), 1)
+        self.assertIn("look to play forward early", answer)
+        self.assertNotIn("mid-block", answer)
 
     def test_nonresponsive_top_rank_does_not_answer(self) -> None:
         question = "How should a team respond after winning the ball?"
@@ -128,6 +146,15 @@ class Lap10DirectAnswerTests(unittest.TestCase):
         self.assertEqual(response.status, "answered")
         self.assertEqual(len(response.tactical_passages), 1)
         self.assertEqual(response.tactical_passages[0].citation, "uefa-uwcl-2024-25 p.69")
+        self.assertIn("When the ball was regained", response.tactical_passages[0].excerpt)
+        self.assertIn("mid-block", response.tactical_passages[0].excerpt)
+        self.assertIn(
+            response.tactical_passages[0].excerpt,
+            service.fixed_chunks[response.tactical_passages[0].evidence_id]["text"],
+        )
+        self.assertEqual(response.answer.count("(uefa-uwcl-2024-25 p.69)"), 2)
+        self.assertIn("direct or diagonal", response.answer)
+        self.assertIn("protecting the ball", response.answer)
         self.assertTrue(validate_grounded_answer(response.answer, response.tactical_passages)[0])
         self.assertNotIn("training split", response.answer.casefold())
 
