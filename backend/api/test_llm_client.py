@@ -73,7 +73,7 @@ def test_llm_client_mock_provider_success(sample_passages: list[TacticalPassage]
 
 def test_llm_client_validates_exact_citations(sample_passages: list[TacticalPassage]) -> None:
     valid_text = (
-        "According to UEFA technical analysis, positional spacing creates options for advancing teammates "
+        "Positional spacing creates options for advancing teammates "
         "(uefa-ucl-2024-25 p.23). In wide areas, defensive pressure can force opponents into congested channels "
         "(uefa-uwcl-2024-25 p.63)."
     )
@@ -81,9 +81,20 @@ def test_llm_client_validates_exact_citations(sample_passages: list[TacticalPass
     assert is_valid, msg
 
 
+def test_llm_client_rejects_boilerplate_prefixes(sample_passages: list[TacticalPassage]) -> None:
+    bad_prefix_text = (
+        "According to UEFA technical analysis, positional spacing creates options for advancing teammates "
+        "(uefa-ucl-2024-25 p.23). In wide areas, defensive pressure can force opponents into congested channels "
+        "(uefa-uwcl-2024-25 p.63)."
+    )
+    is_valid, msg = validate_llm_output(bad_prefix_text, sample_passages)
+    assert not is_valid
+    assert "starts with forbidden boilerplate prefix" in msg
+
+
 def test_llm_client_rejects_hallucinated_citations(sample_passages: list[TacticalPassage]) -> None:
     hallucinated_text = (
-        "According to UEFA technical analysis, wide space must be exploited (uefa-fake-source p.99). "
+        "Wide space must be exploited to break deep lines (uefa-fake-source p.99). "
         "Teams must maintain aggressive pressure in transition (uefa-ucl-2024-25 p.23)."
     )
     is_valid, msg = validate_llm_output(hallucinated_text, sample_passages)
@@ -173,5 +184,6 @@ def test_channel_separation_in_mock_generation(sample_passages: list[TacticalPas
     )
     assert res.success
     assert res.text is not None
-    assert "According to UEFA technical analysis" in res.text
+    assert not res.text.lower().startswith("according to uefa technical analysis")
+    assert "Players must maintain disciplined positional awareness" in res.text
     assert "Recorded match event evidence registers an on-ball Interception" in res.text
