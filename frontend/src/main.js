@@ -108,7 +108,7 @@ function readSession(key) {
 function renderLogin() {
   loginRoot.replaceChildren();
   const card = node('div', 'login-card');
-  append(card, node('p', 'eyebrow', 'YOUR FOOTBALL WORKSPACE'));
+  append(card, node('p', 'eyebrow', 'FOOTBALLGPT · YOUR WORKSPACE'));
   const heading = node('h1', '', 'Welcome back.');
   heading.id = 'login-title';
   heading.tabIndex = -1;
@@ -189,7 +189,8 @@ function renderRoute(route) {
   const isLogin = activeRoute === 'login';
   const isAsk = activeRoute === 'ask';
   const isAnswer = activeRoute === 'answer';
-  routeLabel.textContent = isLogin ? 'Sign in' : isAsk ? 'Ask a question' : 'Evidence review';
+  routeLabel.textContent = isLogin ? 'Sign in' : isAsk ? 'Ask a question' : 'Tactical answer';
+  document.title = isLogin ? 'FootballGPT — Sign in' : isAsk ? 'FootballGPT — Ask a question' : 'FootballGPT — Tactical answer';
   loginRoot.hidden = !isLogin;
   intro.hidden = isLogin || isAnswer;
   workspace.hidden = isLogin;
@@ -666,17 +667,55 @@ function renderLimitations(limitations) {
   return block;
 }
 
+function linkedAnswerCitations(answer, passages) {
+  const citationCounts = new Map();
+  const firstPassage = new Map();
+  passages.forEach((passage, index) => {
+    if (typeof passage.citation !== 'string' || !passage.citation) return;
+    citationCounts.set(passage.citation, (citationCounts.get(passage.citation) || 0) + 1);
+    if (!firstPassage.has(passage.citation)) firstPassage.set(passage.citation, index);
+  });
+  const uniqueCitations = [...citationCounts]
+    .filter(([citation, count]) => count === 1 && answer.includes(citation))
+    .map(([citation]) => citation)
+    .sort((a, b) => b.length - a.length);
+  const fragment = document.createDocumentFragment();
+  let offset = 0;
+  while (offset < answer.length) {
+    let match = null;
+    for (const citation of uniqueCitations) {
+      const index = answer.indexOf(citation, offset);
+      if (index !== -1 && (!match || index < match.index || (index === match.index && citation.length > match.citation.length))) {
+        match = { citation, index };
+      }
+    }
+    if (!match) {
+      fragment.append(document.createTextNode(answer.slice(offset)));
+      break;
+    }
+    if (match.index > offset) fragment.append(document.createTextNode(answer.slice(offset, match.index)));
+    const link = node('a', 'answer-citation', match.citation);
+    link.href = `#passage-card-${firstPassage.get(match.citation)}`;
+    link.setAttribute('aria-label', `Jump to supporting source passage: ${match.citation}`);
+    fragment.append(link);
+    offset = match.index + match.citation.length;
+  }
+  return fragment;
+}
+
 function renderResponse(response, { preview = false } = {}) {
   resultContent.replaceChildren();
   if (preview) append(resultContent, node('div', 'preview-banner', 'SYNTHETIC UI PREVIEW · Not an API response or real evidence'));
   const intro = node('div', `answer-card ${response.status === 'abstained' ? 'answer-abstained' : ''}`);
-  const tag = response.status === 'abstained' ? 'ABSTENTION' : 'EVIDENCE BRIEF';
+  const tag = response.status === 'abstained' ? 'NO SUPPORTED ANSWER AVAILABLE' : 'TACTICAL ANSWER';
   append(intro, node('div', 'answer-tag', tag));
-  append(intro, node('p', 'answer-text', response.answer));
+  const answerText = node('p', 'answer-text');
+  answerText.append(linkedAnswerCitations(response.answer, response.tactical_passages));
+  intro.append(answerText);
 
   const facts = node('div', 'response-facts');
   const statusClass = response.status === 'abstained' ? 'fact-abstained' : 'fact-answered';
-  append(facts, node('span', `fact-pill ${statusClass}`, response.status === 'abstained' ? 'Abstained' : 'Answered'));
+  append(facts, node('span', `fact-pill ${statusClass}`, response.status === 'abstained' ? 'No supported answer' : 'Answered'));
   const supportLabel = response.support_status.replaceAll('_', ' ');
   append(facts, node('span', 'fact-pill', `Support: ${supportLabel}`));
   append(facts, node('span', 'request-id', `Request ${response.request_id}`));
@@ -686,16 +725,28 @@ function renderResponse(response, { preview = false } = {}) {
   if (response.status === 'answered' && response.tactical_passages.length === 0) {
     append(resultContent, node('div', 'notice-box', 'No tactical passage was returned. This response is not presented as supported by UEFA source evidence.'));
   }
-  resultContent.append(renderPassages(response, preview));
-  resultContent.append(renderEventEvidence(response.event_evidence));
-  resultContent.append(renderHistoricalExamples(response.historical_examples));
-  resultContent.append(renderProvenance(response.provenance, response));
-  resultContent.append(renderLimitations(response.limitations));
+  const supporting = node('section', 'supporting-evidence');
+  supporting.setAttribute('aria-labelledby', 'supporting-evidence-title');
+  const supportingHeading = node('div', 'supporting-heading');
+  append(supportingHeading, node('p', 'eyebrow', 'SUPPORTING MATERIAL'));
+  const supportingTitle = node('h3', '', 'Evidence and context');
+  supportingTitle.id = 'supporting-evidence-title';
+  supportingHeading.append(supportingTitle);
+  append(supportingHeading, node('p', '', response.status === 'abstained'
+    ? 'No source-supported answer is available. The returned records below are context only, not a substitute for an answer.'
+    : 'Returned sources and records support the answer; they are separate evidence channels and do not replace it.'));
+  supporting.append(supportingHeading);
+  supporting.append(renderPassages(response, preview));
+  supporting.append(renderEventEvidence(response.event_evidence));
+  supporting.append(renderHistoricalExamples(response.historical_examples));
+  supporting.append(renderProvenance(response.provenance, response));
+  supporting.append(renderLimitations(response.limitations));
+  resultContent.append(supporting);
 
-  showBadge(response.status === 'abstained' ? 'Abstained' : 'Response received', response.status === 'abstained' ? 'warning' : 'success');
+  showBadge(response.status === 'abstained' ? 'No supported answer' : 'Answer received', response.status === 'abstained' ? 'warning' : 'success');
   requestStatus.textContent = response.status === 'abstained'
-    ? 'The backend abstained. No tactical passages are shown as evidence.'
-    : 'Response received. Review the source passages, event records, examples, and limitations separately.';
+    ? 'No supported answer is available. The API abstained.'
+    : 'Answer received. Supporting sources and records follow below.';
 }
 
 function makePreviewTools() {
@@ -935,7 +986,7 @@ form.addEventListener('submit', async (event) => {
       : 'Check that the backend is running and the API base URL is correct, then try again.', timedOut ? 'Request timed out.' : 'Network request failed.');
   } finally {
     submitButton.disabled = false;
-    submitButton.querySelector('.button-label').textContent = 'Review evidence';
+    submitButton.querySelector('.button-label').textContent = 'Get tactical answer';
     results.setAttribute('aria-busy', 'false');
   }
 });
