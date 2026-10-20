@@ -944,6 +944,9 @@ form.addEventListener('submit', async (event) => {
   } catch { /* The request remains usable when session storage is unavailable. */ }
 
   submitButton.disabled = true;
+  form.classList.add('is-loading');
+  form.setAttribute('aria-busy', 'true');
+  submitButton.setAttribute('aria-busy', 'true');
   submitButton.querySelector('.button-label').textContent = 'Reviewing…';
   results.setAttribute('aria-busy', 'true');
   resultContent.replaceChildren();
@@ -996,6 +999,9 @@ form.addEventListener('submit', async (event) => {
       : 'Check that the backend is running and the API base URL is correct, then try again.', timedOut ? 'Request timed out.' : 'Network request failed.');
   } finally {
     submitButton.disabled = false;
+    form.classList.remove('is-loading');
+    form.setAttribute('aria-busy', 'false');
+    submitButton.removeAttribute('aria-busy');
     submitButton.querySelector('.button-label').textContent = 'Get tactical answer';
     results.setAttribute('aria-busy', 'false');
   }
