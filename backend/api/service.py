@@ -234,7 +234,7 @@ class TacticalService:
         v_raw_rows = retrieve_bm25(question, self.bm25_index, top_k=pool_size)
         g_rows = retrieve_graph(question, self.graph, top_k=pool_size)
 
-        # Filter out front matter, table of contents, and roll of honour chunks
+        # Filter out front matter, table of contents, drill sessions, and match goal recaps
         def is_tactical_chunk(chunk: dict[str, Any]) -> bool:
             try:
                 page = int(chunk.get("page", 0))
@@ -243,9 +243,20 @@ class TacticalService:
             text = chunk.get("text", "").strip()
             if page <= 3:
                 return False
-            if text.startswith("CONTENTS") or text.startswith("ROLL OF HONOUR") or text.startswith("TECHNICAL REPORT"):
-                return False
             if len(text) < 50:
+                return False
+            if re.search(r"^(?:CONTENTS|ROLL OF HONOUR|TECHNICAL REPORT)", text, re.I):
+                return False
+            # Exclude training session drill cards, equipment/player counts, and pitch markings
+            if re.search(
+                r"session organisation|coaching points\s*[•]|\b\d+\s*players\s*\+\s*\d+\s*goalkeepers"
+                r"|purple team|oranges must|\bdrill\b",
+                text,
+                re.I,
+            ):
+                return False
+            # Exclude chronological tournament goal-scoring match recaps
+            if re.search(r"how the goal was scored", text, re.I):
                 return False
             return True
 
