@@ -69,5 +69,30 @@ Report what historical information is safe to show and whether the current API c
 
 ## Status
 
-- [ ] Not started.
-- Implementation notes/results: pending.
+- [x] `historical_similarity()` previously renormalized across fields present on both sides. For “How should a team respond after winning the ball?”, the `1.0` score came from just `event_type: 1.0`; no location, play pattern, outcome, pressure, or counterpress feature was compared. It was not exact agreement across all possible dimensions.
+- [x] The score now uses the fixed weights (sum = 1.0) without renormalizing missing dimensions. `similarity_breakdown` reports compared feature values, `available_weight`, `compared_feature_count`, `query_feature_count`, and `feature_coverage`. Thus a single event-type match scores 0.40, not 1.0. API limitations explicitly say scores are not probabilities, coach judgments, or evidence of effectiveness. This is a transparent weighted agreement score, not a calibrated probability.
+- [x] Parser no longer invents point coordinates for broad zones or infers `Incomplete` from generic “turnover/lost possession” wording. It represents the non-directional middle third as `location_region: "middle_third"`; team-relative zones such as “our own half” remain unknown because attacking direction is unresolved. Unsupported off-ball concepts still return no examples. General ball-winning language maps only to Interception as a narrow proxy in the available sampled index; the API says this is not an exhaustive regain set.
+- [x] Compact train candidates store only single anchor-event metadata, not ordered neighboring events. The available `question_event_evidence.jsonl` contains separate exact event-evidence windows and is not the question-only historical candidate corpus; it was not repurposed as historical sequences. The full `cases_output_full/train.jsonl` is absent from this checkout. Therefore no post-event sequence is populated; the approved nullable field is `null` for current examples.
+- [x] After user approval, added `historical_examples[].recorded_event_sequence` to `reports/product_api_contract_v1.md` and the API model. It is a nullable ordered list of `{event_index, timestamp, event_type, team, window_offset}` records from the same train-split match, with offsets 1–5. Schema validation rejects out-of-order source event indices or offsets. The field is not populated without a verified ordered train-event source. Example shape only (placeholder values; not a retrieved event):
+
+  ```json
+  {
+    "recorded_event_sequence": [
+      {
+        "event_index": 217,
+        "timestamp": "<recorded timestamp>",
+        "event_type": "<recorded event type>",
+        "team": "<recorded team>",
+        "window_offset": 1
+      }
+    ]
+  }
+  ```
+
+  The API field is implemented, but no sequence values are returned by the current index. A complete train-only ordered event source is still needed to populate it.
+- [x] Manual audit of the three examples for “How should a team respond after winning the ball?”: the query parser specified only `event_type=Interception`, with no location or other metadata. The returned anchors were `16079:case:1989` (Regular Play, `[35.9, 51.8]`), `16157:case:451` (Regular Play, `[87.0, 71.0]`), and `16231:case:2656` (From Throw In, `[25.0, 53.0]`). All three matched only event type; their new scores are 0.40 with `available_weight=0.40`, one compared feature, and one query feature. The tie is resolved by stable `case_id` order. Their candidate rows contain no neighboring events, so the actual subsequent sequence for each is unknown here. `event_evidence` remains null for this question-only request.
+- [x] Focused tests: `python -m unittest backend.api.test_historical_lap9 backend.api.test_uefa_retrieval_quality -v` — 19 passed (11 Lap 9 and 8 existing Lap 8 regressions). `python -m py_compile backend/retrieval/historical_retriever.py backend/api/service.py backend/api/schemas.py backend/api/test_historical_lap9.py` and `git diff --check` passed. `python -m pytest backend/api/test_historical_retrieval.py -q` could not run because `pytest` is not installed.
+- [ ] Match-level development evaluation not rerun: `python scripts/evaluate_historical_dev_samples.py` exits because `cases_output_full/train.jsonl` is absent; the 3/10/25-per-match candidate evaluation files are also not present. Thus Precision@3, judged coverage, empty-result rate, and score distributions for the changed scorer are not available. Older metadata-proxy results in `historical_retrieval_development_split.md` are not results for this implementation and remain unclaimed.
+- [x] Lap 9 changes are limited to `backend/retrieval/historical_retriever.py`, narrowly scoped `backend/api/service.py`, `backend/api/schemas.py`, `backend/api/test_historical_lap9.py`, the approved `reports/product_api_contract_v1.md` update, and this report. No frontend, UEFA, answer-composer, or held-out evaluation files were changed. Existing uncommitted Lap 8 derived data was preserved. No commit or push was created for Lap 9.
+
+The zero-sequence result is a data limitation, not evidence that no events followed the sampled interceptions. Safe to show: each train-split anchor's recorded metadata, its cautious fixed-weight metadata-agreement score and availability breakdown, and a clear statement that examples are illustrative. The approved contract now supports an optional ordered follow-up sequence, but the current candidate data cannot populate it; `recorded_event_sequence` therefore remains `null`.
