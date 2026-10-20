@@ -435,10 +435,16 @@ class TacticalService:
             limitations.append(
                 f"Historical examples are similar event records from the training split (excluding match {match_id_to_exclude}); they do not constitute UEFA tactical recommendations."
             )
+            if historical_examples:
+                limitations.append(
+                    "Historical scores are fixed-weight agreement on comparable recorded metadata; incomplete feature coverage is shown in similarity_breakdown. Scores are not probabilities or judgments of tactical similarity or effectiveness."
+                )
         elif not (request.context and (request.context.match_id or request.context.trigger_event_id)):
             # Question-only request: derive bounded event features directly from question text
             query_event_features, unrep_reason = parse_question_to_event_query(question)
             if query_event_features:
+                if unrep_reason:
+                    limitations.append(unrep_reason)
                 h_raw = retrieve_historical(
                     query_event_features,
                     self.historical_cases,
@@ -470,9 +476,16 @@ class TacticalService:
                         "Historical examples are similar recorded event situations from the StatsBomb training split; "
                         "they illustrate recorded patterns but do not constitute UEFA tactical principles or proof of effectiveness."
                     )
+                    limitations.append(
+                        "Historical scores are fixed-weight agreement on comparable recorded metadata; incomplete feature coverage is shown in similarity_breakdown. Scores are not probabilities or judgments of tactical similarity or effectiveness."
+                    )
                 else:
                     limitations.append(
                         "No training-split match situations met the similarity threshold for the question's event features."
+                    )
+                if query_event_features.get("event_type_scope") == "regain_proxy":
+                    limitations.append(
+                        "Generic ball-winning language is matched only to recorded Interception anchors in the available sampled index; it is a narrow event-type proxy, not an exhaustive set of regains. The train candidate index stores anchor records only, so no ordered post-event sequence is available to show."
                     )
             else:
                 if unrep_reason:

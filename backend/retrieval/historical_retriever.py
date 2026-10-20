@@ -31,18 +31,39 @@ def _outcome(event: dict) -> str | None:
     return event.get("event_outcome")
 
 
-def _features(event: dict) -> dict[str, Any]:
+def _features(event: dict, *, candidate_record: bool = False) -> dict[str, Any]:
+    under_pressure = event.get("under_pressure")
+    counterpress = event.get("counterpress")
+    # The compact train sample stores both flags as False when the source key
+    # was absent. Preserve True evidence, but don't treat that lossy default as
+    # an observed negative during candidate comparisons.
+    if candidate_record and str(event.get("provenance", "")).startswith("StatsBomb-derived train case"):
+        under_pressure = None if under_pressure is False else under_pressure
+        counterpress = None if counterpress is False else counterpress
     return {
         "event_type": _name(event.get("type")) or event.get("event_type"),
         "play_pattern": _name(event.get("play_pattern")) or event.get("play_pattern"),
         "location": event.get("location"),
+        "location_region": event.get("location_region"),
         "event_outcome": _outcome(event),
-        "under_pressure": event.get("under_pressure"),
-        "counterpress": event.get("counterpress"),
+        "under_pressure": under_pressure,
+        "counterpress": counterpress,
     }
 
 
-def _location_similarity(a: Any, b: Any) -> float | None:
+def _location_similarity(a: Any, b: Any, region: Any = None) -> float | None:
+    if region is not None:
+        if not (isinstance(b, list) and len(b) >= 2):
+            return None
+        try:
+            x = float(b[0])
+        except (TypeError, ValueError):
+            return None
+        # Only the non-directional middle third is currently parsed from
+        # question text. Team-relative zones need attacking direction metadata.
+        if region == "middle_third":
+            return float(40.0 <= x <= 80.0)
+        return None
     if not (isinstance(a, list) and isinstance(b, list) and len(a) >= 2 and len(b) >= 2):
         return None
     # StatsBomb pitch coordinates are 120 x 80. A smooth distance score avoids
@@ -57,21 +78,36 @@ def _categorical_similarity(a: Any, b: Any) -> float | None:
 
 
 def historical_similarity(query_event: dict, candidate: dict) -> tuple[float, dict[str, float]]:
-    q, c = _features(query_event), _features(candidate)
+    q, c = _features(query_event), _features(candidate, candidate_record=True)
+    query_fields = {
+        "event_type": q["event_type"],
+        "play_pattern": q["play_pattern"],
+        "location": q["location"] if q["location"] is not None else q["location_region"],
+        "event_outcome": q["event_outcome"],
+        "under_pressure": q["under_pressure"],
+        "counterpress": q["counterpress"],
+    }
+    query_feature_count = sum(value is not None for value in query_fields.values())
     fields = {
         "event_type": (0.40, _categorical_similarity(q["event_type"], c["event_type"])),
         "play_pattern": (0.15, _categorical_similarity(q["play_pattern"], c["play_pattern"])),
-        "location": (0.25, _location_similarity(q["location"], c["location"])),
+        "location": (0.25, _location_similarity(q["location"], c["location"], q["location_region"])),
         "event_outcome": (0.10, _categorical_similarity(q["event_outcome"], c["event_outcome"])),
         "under_pressure": (0.05, _categorical_similarity(q["under_pressure"], c["under_pressure"])),
         "counterpress": (0.05, _categorical_similarity(q["counterpress"], c["counterpress"])),
     }
     available = {k: (weight, score) for k, (weight, score) in fields.items() if score is not None}
     weight_sum = sum(weight for weight, _ in available.values())
-    if weight_sum == 0:
-        return 0.0, {}
     breakdown = {k: round(score, 6) for k, (_, score) in available.items()}
-    score = sum(weight * value for weight, value in available.values()) / weight_sum
+    breakdown.update({
+        "available_weight": round(weight_sum, 6),
+        "compared_feature_count": float(len(available)),
+        "query_feature_count": float(query_feature_count),
+        "feature_coverage": round(weight_sum, 6),
+    })
+    # Weights sum to 1.0. Missing dimensions contribute no score rather than
+    # being renormalized away, so a single easy match cannot look perfect.
+    score = sum(weight * value for weight, value in available.values())
     return max(0.0, min(1.0, score)), breakdown
 
 
@@ -105,12 +141,13 @@ def parse_question_to_event_query(question: str) -> tuple[dict[str, Any] | None,
     ]
     has_unrepresentable = any(re.search(pat, ql) for pat in unrepresentable_patterns)
 
-    # Detect discrete on-ball event type
+    # Detect discrete on-ball event type. General regain language is mapped to
+    # Interception only as a narrow available-index proxy, not as an exact
+    # synonym for all ways of winning possession.
     event_type = None
-    if re.search(
-        r"\b(?:interception|intercepted|winning the ball|won the ball|win the ball|ball recovery|recovering the ball|recovered the ball|regains?|regaining|regained|turnovers?)\b",
-        ql,
-    ):
+    explicit_interception = bool(re.search(r"\b(?:interception|intercepted|intercepting)\b", ql))
+    generic_regain = bool(re.search(r"\b(?:winning the ball|won the ball|win the ball|ball recovery|recovering the ball|recovered the ball|regains?|regaining|regained|turnovers?)\b", ql))
+    if explicit_interception or generic_regain:
         event_type = "Interception"
     elif re.search(r"\b(?:shots?|shooting|finish(?:ing)?|strike|attempt on goal|header on goal)\b", ql):
         event_type = "Shot"
@@ -155,18 +192,21 @@ def parse_question_to_event_query(question: str) -> tuple[dict[str, Any] | None,
     elif re.search(r"\b(?:open play|regular play)\b", ql):
         play_pattern = "Regular Play"
 
-    # Detect field location
+    # Parse only a non-directional region. Never invent a point coordinate for
+    # a broad phrase; team-relative zones are unknown without attack direction.
     location = None
-    if re.search(r"\b(?:defensive third|own third|own half|defensive half|deep in defence|deep in defense)\b", ql):
-        location = [20.0, 40.0]
-    elif re.search(r"\b(?:final third|attacking third|opponent(?:'s)? half|in the box|penalty area|outside the box)\b", ql):
-        location = [100.0, 40.0]
-    elif re.search(r"\b(?:midfield|middle third|center circle|central midfield|middle of the pitch)\b", ql):
-        location = [60.0, 40.0]
+    location_region = None
+    unresolved_location = None
+    if re.search(r"\b(?:midfield|middle third|center circle|central midfield|middle of the pitch)\b", ql):
+        location_region = "middle_third"
+    elif re.search(r"\b(?:defensive third|own third|own half|defensive half|deep in defence|deep in defense|final third|attacking third|opponent(?:'s)? half|in the box|penalty area|outside the box)\b", ql):
+        unresolved_location = (
+            "A team-relative or finer location cue was left unknown because the question parser has no resolved attacking direction or zone boundaries."
+        )
 
     # Outcome
     event_outcome = None
-    if re.search(r"\b(?:incomplete|failed|misplaced|turnovers?|lost possession)\b", ql):
+    if re.search(r"\b(?:incomplete|failed pass|misplaced pass)\b", ql):
         event_outcome = "Incomplete"
     elif re.search(r"\b(?:scored?|goals?)\b", ql):
         event_outcome = "Goal"
@@ -183,11 +223,14 @@ def parse_question_to_event_query(question: str) -> tuple[dict[str, Any] | None,
         "event_type": event_type,
         "play_pattern": play_pattern,
         "location": location,
+        "location_region": location_region,
         "event_outcome": event_outcome,
         "under_pressure": under_pressure,
         "counterpress": counterpress,
     }
-    return features, None
+    if generic_regain and not explicit_interception:
+        features["event_type_scope"] = "regain_proxy"
+    return features, unresolved_location
 
 
 def retrieve_historical(

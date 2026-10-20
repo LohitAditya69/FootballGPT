@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from typing import Any, Literal
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class ContextPayload(BaseModel):
@@ -58,6 +58,16 @@ class EventEvidence(BaseModel):
     events: list[dict[str, Any]] = Field(default_factory=list)
 
 
+class RecordedHistoricalEvent(BaseModel):
+    """One observed event after a historical anchor, in source file order."""
+
+    event_index: int
+    timestamp: str
+    event_type: str
+    team: str | None = None
+    window_offset: int = Field(ge=1, le=5, description="Positive offset after the anchor, bounded to five events")
+
+
 class HistoricalExample(BaseModel):
     evidence_id: str
     case_id: str | int | None = None
@@ -71,6 +81,11 @@ class HistoricalExample(BaseModel):
     formation: str | None = None
     historical_score: float
     similarity_breakdown: dict[str, float] = Field(default_factory=dict)
+    recorded_event_sequence: list[RecordedHistoricalEvent] | None = Field(
+        default=None,
+        max_length=5,
+        description="Ordered, same-match train-split events after this anchor; null when no verified window is available",
+    )
     source_split: str = "train"
     label: str = "similar recorded situation (train split, not UEFA coaching principle)"
 
@@ -80,6 +95,17 @@ class HistoricalExample(BaseModel):
         if v is None:
             return None
         return str(v)
+
+    @model_validator(mode="after")
+    def validate_recorded_event_sequence_order(self) -> "HistoricalExample":
+        sequence = self.recorded_event_sequence
+        if sequence is None:
+            return self
+        offsets = [event.window_offset for event in sequence]
+        indices = [event.event_index for event in sequence]
+        if any(a >= b for a, b in zip(offsets, offsets[1:])) or any(a >= b for a, b in zip(indices, indices[1:])):
+            raise ValueError("recorded_event_sequence must be ordered by source event index and positive offset")
+        return self
 
 
 class ProvenanceTrace(BaseModel):
