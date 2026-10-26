@@ -116,7 +116,7 @@ def main() -> int:
         "",
         "This run calls `TacticalService.ask()` for all 42 development questions, so it evaluates the current backend path: tactical-chunk filtering, quality/abstention gate, config-driven BM25/graph fusion, fixed-chunk citation validation, and the API top-3 output.",
         "",
-        "The workbook labels are provisional scripted profiles over a retrieval-generated candidate set. This is a development diagnostic, not human/coach review or exhaustive relevance evaluation. No v1/v2 held-out labels were used.",
+        "The workbook contains adjudicated judgments from two independent human coach reviewers, as confirmed by the user. The candidate set is retrieval-generated and non-exhaustive; this is a development diagnostic, not exhaustive corpus evaluation. No v1/v2 held-out labels were used.",
         "",
         f"Questions: {len(rows)}. API answered: {answered}; abstained: {len(rows) - answered}. Questions with no grade-2 workbook page: {no_direct_qrels}.",
         "",
@@ -128,7 +128,7 @@ def main() -> int:
         "",
         "## Exploratory V:G weight sensitivity",
         "",
-        "The following one-factor sweep changes only the relative graph weight while calling the same backend path. These values use the same provisional qrels that the sweep is selecting against; do not treat the best row as an independent result or automatically promote it.",
+        "The following one-factor sweep changes only the relative graph weight while calling the same backend path. These values use the same coach-reviewed candidate-pool qrels that the sweep is selecting against; do not treat the best row as an independent result or automatically promote it.",
         "",
         "| Graph weight (G) | Direct P@3 | Direct Recall@3 | Direct MRR | nDCG@3 | Judged@3 |",
         "|---:|---:|---:|---:|---:|---:|",
@@ -136,7 +136,7 @@ def main() -> int:
     report.extend(f"| {row['graph_weight']:.2f} | {row['direct_P@3']:.3f} | {row['direct_Recall@3']:.3f} | {row['direct_MRR']:.3f} | {row['nDCG@3']:.3f} | {row['Judged@3']:.3f} |" for row in fusion_rows)
     report += [
         "",
-        "In this same-label sensitivity sweep, BM25-only (G=0) is slightly higher than the configured G=0.10 setting on P@3, Recall@3, and nDCG@3, and ties MRR and judged coverage. This is an exploratory candidate, not a promotion: the qrels are scripted, retrieval-generated, and reused to select the candidate.",
+        "In this same-label sensitivity sweep, BM25-only (G=0) is slightly higher than the configured G=0.10 setting on P@3, Recall@3, and nDCG@3, and ties MRR and judged coverage. This is an exploratory candidate, not a promotion: the coach-reviewed qrels cover a retrieval-generated candidate pool and are reused to select the candidate.",
         "",
         "Because the workbook qrels come from a retrieval-generated pool and seven questions have no grade-2 page, answer/abstention status is reported separately and these metrics must not be read as proof of factual answerability.",
         "",

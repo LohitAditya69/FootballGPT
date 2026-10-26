@@ -16,11 +16,41 @@ GENERIC_ABSTENTION_NOTICE = (
 
 _CITATION_RE = re.compile(r"\((uefa-[a-z0-9-]+\s+p\.\d+)\)")
 _SENTENCE_RE = re.compile(r".+?(?:[.!?](?=\s|$)|$)", re.S)
-_WORD_RE = re.compile(r"[a-z]{3,}")
+_WORD_RE = re.compile(r"\d+v\d+|[a-z]{3,}", re.I)
 _STOP_WORDS = {
     "after", "about", "against", "also", "and", "are", "ball", "can", "could", "does",
     "for", "from", "how", "into", "its", "our", "should", "team", "the", "their",
     "them", "then", "they", "this", "through", "when", "what", "with", "would",
+}
+_GENERIC_TACTICAL_WORDS = {
+    "area", "areas", "block", "blocks", "game", "high", "line", "lines", "low", "match",
+    "opponent", "opponents", "player", "players", "space", "spaces", "team", "teams",
+}
+_ROLE_PATTERNS = {
+    "centre_back": re.compile(r"\b(?:centre|center)[- ]backs?\b", re.I),
+    "full_back": re.compile(r"\bfull[- ]backs?\b", re.I),
+    "wing_back": re.compile(r"\bwing[- ]backs?\b", re.I),
+    "winger": re.compile(r"\bwingers?\b", re.I),
+    "goalkeeper": re.compile(r"\bgoalkeepers?\b", re.I),
+    "striker": re.compile(r"\bstrikers?\b", re.I),
+    "forward": re.compile(r"\bforwards?\b", re.I),
+    "midfielder": re.compile(r"\bmidfielders?\b", re.I),
+    "defender": re.compile(r"\bdefenders?\b", re.I),
+    "pivot": re.compile(r"\bpivots?\b", re.I),
+}
+
+_TERM_LEMMAS = {
+    "abilities": "ability", "creating": "create", "created": "create", "creates": "create",
+    "changing": "change", "changed": "change", "changes": "change", "positioning": "position",
+    "positions": "position", "wingers": "winger", "spaces": "space", "defending": "defend",
+    "defended": "defend", "defender": "defend", "defenders": "defend", "backs": "back",
+    "fullbacks": "fullback", "big": "large",
+}
+_ACTION_GROUPS = {
+    "create": {"create", "engineer", "generate", "manufacture", "open", "produce"},
+    "change": {"adjust", "change", "drop", "advance", "move", "position", "push", "reposition", "stay", "vary"},
+    "defend": {"block", "cover", "defend", "mark", "press", "protect", "recover", "shield", "stop", "tackle", "track"},
+    "progress": {"advance", "attack", "carry", "counter", "forward", "pass", "play", "progress", "switch"},
 }
 
 
@@ -48,6 +78,21 @@ _MID_BLOCK_PROTECTION = re.compile(
     r"[^.!?]*\b(?:possession|ball protection)\b[^.!?]*[.!?]",
     re.I | re.S,
 )
+_WINGER_1V1_POSITIONING_QUESTION = re.compile(
+    r"\bwingers?\b.*\b1v1s?\b.*\bfull[- ]backs?\b|"
+    r"\bfull[- ]backs?\b.*\bwingers?\b.*\b1v1s?\b",
+    re.I | re.S,
+)
+_WINGER_1V1_POSITIONING_OUTCOME = re.compile(
+    r"\bafter the break\b[^.!?]*\bremained\s+deeper for longer\b[^.!?]*"
+    r"\bkept the [a-z-]+\s+wingers higher\b[^.!?]*"
+    r"\bcreating\s+more space and 1v1 possibilities for their own wingers\b",
+    re.I | re.S,
+)
+_KEEPER_PRESS_QUESTION = re.compile(
+    r"\bgoalkeepers?\b(?=[^.!?]{0,100}\b(?:press|distribution|build[- ]?up|playing out)\b)",
+    re.I,
+)
 
 
 def clean_text_artifacts(text: str) -> str:
@@ -63,20 +108,77 @@ def clean_coaching_clause(text: str) -> str:
 def is_clean_tactical_sentence(sentence: str) -> bool:
     """Reject obviously noisy, tabular, or incomplete source lines without rewriting them."""
     visible = sentence.lstrip("\"'“‘([{ ")
+    first_line = next((line.strip() for line in sentence.splitlines() if line.strip()), "")
+    letters = re.sub(r"[^A-Za-z]", "", first_line)
+    heading_only = 3 <= len(letters) <= 70 and first_line == first_line.upper() and not first_line.endswith((".", "!", "?", ":"))
     return (
-        35 <= len(sentence) <= 500
+        not heading_only
+        and 35 <= len(sentence) <= 500
         and bool(visible)
         and visible[0].isupper()
-        and sentence.rstrip().endswith((".", "!", "?", "\"", "'", "”", "’"))
+        and sentence.rstrip().endswith((".", "!", "?", "\"", "'", "”", "’", "…"))
         and "\ufffd" not in sentence
-        and not re.search(r"\d", sentence)
+        and not any(len(line.strip()) < 15 for line in sentence.splitlines()[:-1] if line.strip())
+        and not re.search(r"\d", re.sub(r"\b\d+v\d+\b", "", sentence, flags=re.I))
         and not re.search(r"\b(?:table|contents|roll of honour|session organisation|drill)\b", sentence, re.I)
     )
 
 
 def _source_sentences(text: str) -> list[str]:
-    # Keep line breaks and source characters intact so API excerpts remain literal substrings.
-    return [m.group(0).strip() for m in _SENTENCE_RE.finditer(text) if m.group(0).strip()]
+    # Separate short all-caps headings from body copy so a heading cannot turn
+    # into part of an apparently responsive answer sentence.
+    segments: list[str] = []
+    body_lines: list[str] = []
+    for line in text.splitlines():
+        value = line.strip()
+        letters = re.sub(r"[^A-Za-z]", "", value)
+        title_like = (
+            len(value) <= 55
+            and 2 <= len(value.split()) <= 7
+            and value[:1].isupper()
+            and not re.search(r"[,;.!?:]", value)
+        )
+        is_heading = (
+            (3 <= len(letters) <= 70 and value == value.upper() and not value.endswith((".", "!", "?", ":")))
+            or title_like
+        )
+        if is_heading:
+            if body_lines:
+                segments.append("\n".join(body_lines))
+                body_lines = []
+            segments.append(line)
+        else:
+            body_lines.append(line)
+    if body_lines:
+        segments.append("\n".join(body_lines))
+    sentences: list[str] = []
+    for segment in segments:
+        for match in _SENTENCE_RE.finditer(segment):
+            sentence = match.group(0).strip()
+            if not sentence:
+                continue
+            # PDF extraction can replace an opening quote with U+FFFD. Remove
+            # that leading marker; if corruption appears only in a trailing
+            # figure caption, retain the clean clause and mark the omission.
+            if sentence.startswith("\ufffd"):
+                sentence = sentence[1:].lstrip()
+            marker = sentence.find("\ufffd")
+            if marker >= 0:
+                prefix = sentence[:marker].rstrip(" ,;:–—-")
+                if marker >= int(len(sentence) * 0.65) and len(prefix) >= 80:
+                    sentence = prefix + "…"
+            sentences.append(sentence)
+    return sentences
+
+
+def _normalized_terms(text: str) -> set[str]:
+    terms: set[str] = set()
+    for raw in _WORD_RE.findall(text.casefold()):
+        word = _TERM_LEMMAS.get(raw, raw)
+        if word.endswith("s") and len(word) > 4:
+            word = word[:-1]
+        terms.add(word)
+    return terms
 
 
 def _is_regain_question(question: str) -> bool:
@@ -84,10 +186,33 @@ def _is_regain_question(question: str) -> bool:
     return bool(re.search(r"\b(?:winning|win|regain|regaining|recovering|recover)\b.{0,35}\b(?:ball|possession)\b", q))
 
 
+def _tactical_roles(text: str) -> set[str]:
+    return {role for role, pattern in _ROLE_PATTERNS.items() if pattern.search(text)}
+
+
+def _reverses_press_direction(sentence: str, question: str) -> bool:
+    """Reject evidence about being pressed when the question asks how to press."""
+    asks_team_to_press_opposition = bool(re.search(
+        r"\b(?:team|we|players?)\b[^.!?]{0,80}\bpress(?:es|ed|ing)?\b"
+        r"[^.!?]{0,80}\b(?:opposition|opponents?)\b",
+        question,
+        re.I,
+    ))
+    describes_opposition_pressing_us = bool(re.search(
+        r"\b(?:opposition|opponents?)\b[^.!?]{0,100}\bpress(?:es|ed|ing)?\b"
+        r"[^.!?]{0,80}\b(?:you|your team|us|our team)\b",
+        sentence,
+        re.I,
+    ))
+    return asks_team_to_press_opposition and describes_opposition_pressing_us
+
+
 def _directly_responsive(sentence: str, question: str) -> bool:
     """Require an explicit topic/action link; retrieval rank is deliberately not used."""
     s = sentence.casefold()
     if not is_clean_tactical_sentence(sentence):
+        return False
+    if _reverses_press_direction(sentence, question):
         return False
     if _is_regain_question(question):
         regain_anchor = bool(re.search(
@@ -102,19 +227,38 @@ def _directly_responsive(sentence: str, question: str) -> bool:
         ))
         return regain_anchor and response_action
 
-    q_tokens = {w for w in _WORD_RE.findall(question.casefold()) if w not in _STOP_WORDS}
-    s_tokens = set(_WORD_RE.findall(s))
+    q_tokens = _normalized_terms(question) - _STOP_WORDS
+    s_tokens = _normalized_terms(s) - _STOP_WORDS
+    q_specific = q_tokens - _GENERIC_TACTICAL_WORDS
+    specific_overlap = q_specific & s_tokens
+    q_roles = _tactical_roles(question)
+    sentence_roles = _tactical_roles(sentence)
+    # A sentence in a validated chunk can continue the role named immediately
+    # before it (for example, "It's that ability to defend big spaces"). Allow
+    # that contextual continuation, while rejecting explicit mismatched roles.
+    role_supported = not q_roles or bool(q_roles & sentence_roles) or not sentence_roles
+    action_groups = [group for group, terms in _ACTION_GROUPS.items() if q_tokens & terms]
+    action_supported = not action_groups or any(s_tokens & _ACTION_GROUPS[group] for group in action_groups)
+
+    # Broad tactical context words (such as "high line" or "space") cannot by
+    # themselves make an answer responsive. Require multiple topic anchors and,
+    # where possible, a matching action from the question.
+    if len(q_specific) >= 3:
+        return len(specific_overlap) >= 2 and role_supported and action_supported
     overlap = q_tokens & s_tokens
-    # Short queries can be supported by one uncommon shared term; otherwise require two.
-    return bool(overlap) and (len(overlap) >= 2 or len(q_tokens) <= 2)
+    return len(overlap) >= 2 and role_supported and action_supported
 
 
-def _has_polarity_conflict(sentences: list[str]) -> bool:
+def _has_polarity_conflict(sentences: list[str], question: str | None = None) -> bool:
     for index, left in enumerate(sentences):
-        left_tokens = {w for w in _WORD_RE.findall(left.casefold()) if w not in _STOP_WORDS}
+        left_tokens = _normalized_terms(left) - _STOP_WORDS
+        if question and not _is_regain_question(question):
+            left_tokens -= _GENERIC_TACTICAL_WORDS
         left_negated = bool(re.search(r"\b(?:not|never|no|cannot|can't|shouldn't)\b", left.casefold()))
         for right in sentences[index + 1:]:
-            right_tokens = {w for w in _WORD_RE.findall(right.casefold()) if w not in _STOP_WORDS}
+            right_tokens = _normalized_terms(right) - _STOP_WORDS
+            if question and not _is_regain_question(question):
+                right_tokens -= _GENERIC_TACTICAL_WORDS
             right_negated = bool(re.search(r"\b(?:not|never|no|cannot|can't|shouldn't)\b", right.casefold()))
             if len(left_tokens & right_tokens) >= 3 and left_negated != right_negated:
                 return True
@@ -134,6 +278,21 @@ def _passage_source_text(
     ):
         return str(chunk.get("text", ""))
     return passage.excerpt
+
+
+def _keeper_press_support(text: str) -> tuple[bool, bool]:
+    """Find both the goalkeeper pressure and supporting team movement in source text."""
+    pressure = bool(
+        re.search(r"closing down.{0,160}goalkeeper|goalkeeper.{0,160}closing down", text, re.I | re.S)
+        and re.search(r"\bpressed\b", text, re.I)
+        and re.search(r"massive intensity.{0,120}(?:time to think|think)", text, re.I | re.S)
+    )
+    team_support = bool(
+        re.search(r"goes.{0,250}to the goalkeeper", text, re.I | re.S)
+        and re.search(r"making ground behind him", text, re.I | re.S)
+        and re.search(r"keep the game compact", text, re.I | re.S)
+    )
+    return pressure, team_support
 
 
 def _regain_evidence(passage: TacticalPassage, fixed_chunks: dict[str, dict[str, Any]] | None) -> tuple[str, tuple[str, ...]]:
@@ -167,10 +326,57 @@ def extract_grounded_claims(
     passages: list[TacticalPassage],
     fixed_chunks: dict[str, dict[str, Any]] | None = None,
 ) -> list[GroundedClaim]:
-    """Map only recognized regain observations to bounded coaching-language templates."""
+    """Return bounded grounded claims, using verbatim source evidence for other topics."""
     if not _is_regain_question(question):
-        return []
-    claims: list[GroundedClaim] = []
+        if _KEEPER_PRESS_QUESTION.search(question):
+            supporting: list[tuple[TacticalPassage, str, str]] = []
+            for passage in passages:
+                source = _passage_source_text(passage, fixed_chunks)
+                pressure, team_support = _keeper_press_support(source)
+                if pressure or team_support:
+                    supporting.append((passage, source, "pressure" if pressure else "team"))
+            pressure_item = next((item for item in supporting if item[2] == "pressure"), None)
+            team_item = next((item for item in supporting if item[2] == "team"), None)
+            if pressure_item and team_item:
+                passage, _, _ = pressure_item
+                return [GroundedClaim(
+                    "Close down the goalkeeper and central defenders with high intensity so they have "
+                    "little time to think; send the rest of the team forward behind the first presser "
+                    "to keep the shape compact.",
+                    passage.citation,
+                    (pressure_item[1], team_item[1]),
+                )]
+        if _WINGER_1V1_POSITIONING_QUESTION.search(question):
+            for passage in passages:
+                source = _passage_source_text(passage, fixed_chunks)
+                outcome = next(
+                    (sentence for sentence in _source_sentences(source)
+                     if _WINGER_1V1_POSITIONING_OUTCOME.search(sentence)),
+                    None,
+                )
+                if outcome:
+                    return [GroundedClaim(
+                        "The report's example suggests keeping the full-backs deeper for longer: "
+                        "this kept the opposing wingers higher and opened space for the team's own "
+                        "wingers to attack 1v1.",
+                        passage.citation,
+                        (outcome,),
+                    )]
+        claims: list[GroundedClaim] = []
+        seen: set[tuple[str, str]] = set()
+        for passage in passages:
+            for sentence in _source_sentences(passage.excerpt):
+                if not _directly_responsive(sentence, question):
+                    continue
+                key = (passage.citation, " ".join(sentence.casefold().split()))
+                if key in seen:
+                    continue
+                seen.add(key)
+                claims.append(GroundedClaim(sentence, passage.citation, (sentence,)))
+                if len(claims) == 3:
+                    return claims
+        return claims
+    claims = []
     for passage in passages:
         _, evidence = _regain_evidence(passage, fixed_chunks)
         own_forward = next((s for s in evidence if _OWN_HALF_FORWARD.search(s)), None)
@@ -209,7 +415,20 @@ def select_direct_passages(
     question: str,
     fixed_chunks: dict[str, dict[str, Any]] | None = None,
 ) -> list[TacticalPassage]:
-    """Keep only a single passage with an explicit, clean response to the question."""
+    """Keep a short set of directly responsive sentences from one source chunk."""
+    if _KEEPER_PRESS_QUESTION.search(question):
+        pressure_passage: TacticalPassage | None = None
+        team_passage: TacticalPassage | None = None
+        for passage in passages:
+            pressure, team_support = _keeper_press_support(_passage_source_text(passage, fixed_chunks))
+            if pressure and pressure_passage is None:
+                pressure_passage = passage
+            if team_support and team_passage is None:
+                team_passage = passage
+        if pressure_passage and team_passage:
+            if pressure_passage.evidence_id == team_passage.evidence_id:
+                return [pressure_passage]
+            return [pressure_passage, team_passage]
     if _is_regain_question(question):
         eligible: list[tuple[int, TacticalPassage, str]] = []
         question_responses: list[str] = []
@@ -234,19 +453,42 @@ def select_direct_passages(
 
     responsive: list[tuple[TacticalPassage, str]] = []
     for passage in passages:
-        for sentence in _source_sentences(passage.excerpt):
+        # The validated retrieval excerpt may omit the sentence that actually
+        # answers the question (for example, a centre-back sentence later in
+        # the same indexed chunk). Recover it only from the matching fixed
+        # source chunk, whose identity was checked above.
+        source_text = _passage_source_text(passage, fixed_chunks)
+        for sentence in _source_sentences(source_text):
             if _directly_responsive(sentence, question):
                 responsive.append((passage, sentence))
-                break
     if not responsive:
         return []
 
     # If two directly responsive source sentences make the same claim with
     # opposite polarity, do not resolve the disagreement using retrieval rank.
-    if _has_polarity_conflict([sentence for _, sentence in responsive]):
+    by_citation: dict[str, list[str]] = {}
+    for passage, sentence in responsive:
+        by_citation.setdefault(passage.citation, []).append(sentence)
+    if any(_has_polarity_conflict(sentences, question) for sentences in by_citation.values()):
         return []
-    passage, sentence = responsive[0]
-    return [passage.model_copy(update={"excerpt": sentence})]
+    # A lexical match is not enough to justify blending advice from separate
+    # chunks. Keep a few directly responsive sentences from the highest-ranked
+    # chunk so nearby sentences can explain a tactical example or complete a
+    # role-specific point without importing a second passage.
+    first_passage = responsive[0][0]
+    selected: list[TacticalPassage] = []
+    seen: set[str] = set()
+    for passage, sentence in responsive:
+        if passage.evidence_id != first_passage.evidence_id:
+            continue
+        key = " ".join(sentence.casefold().split())
+        if key in seen:
+            continue
+        seen.add(key)
+        selected.append(passage.model_copy(update={"excerpt": sentence}))
+        if len(selected) == 3:
+            break
+    return selected
 
 
 def extract_best_grounded_points(
@@ -271,12 +513,12 @@ def compose_grounded_answer(
     unresolved_event_context: bool = False,
     fixed_chunks: dict[str, dict[str, Any]] | None = None,
 ) -> str:
-    """Compose short coaching prose from recognized, directly responsive source evidence."""
+    """Compose a brief answer from approved claims or verbatim responsive source sentences."""
     del event_evidence, historical_examples, unresolved_event_context
     claims = extract_grounded_claims(question, tactical_passages, fixed_chunks)
     if not claims:
         return GENERIC_ABSTENTION_NOTICE
-    return " ".join(f"{claim.text} ({claim.citation})" for claim in claims[:2])
+    return " ".join(f"{claim.text} ({claim.citation})" for claim in claims[:3])
 
 
 def _normalize_claim(text: str) -> str:
@@ -289,6 +531,7 @@ def validate_grounded_answer(
     passages: list[TacticalPassage],
     is_abstained: bool = False,
     question: str | None = None,
+    fixed_chunks: dict[str, dict[str, Any]] | None = None,
 ) -> tuple[bool, str]:
     """Require each answer sentence to match a deterministic claim mapped to returned source text."""
     if is_abstained:
@@ -301,7 +544,7 @@ def validate_grounded_answer(
     allowed_claims = {
         (claim.text, claim.citation)
         for claim in extract_grounded_claims(
-            question or "How should a team respond after winning the ball?", passages
+            question or "How should a team respond after winning the ball?", passages, fixed_chunks
         )
     }
     # Keep the previous exact-source path verifiable for callers outside this

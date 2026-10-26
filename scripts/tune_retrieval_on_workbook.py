@@ -157,7 +157,7 @@ def main() -> int:
         "",
         "This is a development-only, exploratory sweep over the 42 workbook questions. It did not read v1 or v2 held-out labels and did not modify `backend/retrieval/ranking_config.json`.",
         "",
-        "The workbook qrels are provisional: they use scripted reviewer profiles and a retrieval-generated candidate pool. Results are not human/coach validation. The tuning grid reuses those labels, so the highest score is subject to selection bias and must not be treated as a reliable generalization estimate.",
+        "The workbook qrels are independent human coach judgments over a retrieval-generated, non-exhaustive candidate pool. Results are candidate-pool diagnostics, not exhaustive corpus validation. The tuning grid reuses those labels, so the highest score is subject to selection bias and must not be treated as a reliable generalization estimate.",
         "",
         f"Search space: {len(trials)} combinations; `k1={K1_VALUES}`, `b={B_VALUES}`, graph weights `{GRAPH_WEIGHTS}`. Objective ordering for this exploratory report: nDCG@5 (grade 2 gain 3, grade 1 gain 1), then direct-support P@5, direct-support MRR, direct-support recall, then lower graph weight.",
         "",

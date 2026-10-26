@@ -59,7 +59,7 @@ The user-provided `retrieval_review_v1.xlsx` was incorporated as a separate
 provisional label view, without changing the workbook or replacing the
 AI-qrel baseline above. Its 1,071 labels span 42 questions: 134 direct (2),
 735 partial (1), 202 uncertain, and no adjudicated grade 0. The workbook uses
-scripted reviewer profiles, not independent human or coach judgments. The
+independent human coach reviewers, as confirmed by the user. The
 exported qrels omit full page text and excerpts. Current rankings were
 rescored in `retrieval_workbook_review_evaluation_v1.md`; grade 2 is the
 strict direct-support relevance definition, grade 1 is retained for a graded

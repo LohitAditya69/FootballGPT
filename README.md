@@ -106,10 +106,9 @@ is now the primary day-to-day prototype evaluation. Refresh the rankings with
 `scripts/compare_dense_retrieval_on_dev.py`, import the unchanged workbook with
 `scripts/import_retrieval_review_workbook.py`, then score it with
 `scripts/evaluate_retrieval_workbook_review_v1.py`. These labels come from
-scripted reviewer profiles and a retrieval-generated candidate pool, so this
-is a prototype diagnostic only—not human/coach validation or publication
-evidence. Keep the production config unchanged unless later independent review
-supports a consistent gain.
+two independent human coach reviewers and a retrieval-generated candidate
+pool. This is coach-reviewed candidate-pool evidence, not an exhaustive corpus
+evaluation. Keep production settings unchanged until candidate-pool coverage and answer quality are reviewed.
 
 To evaluate the actual API ranker, run
 `scripts/evaluate_backend_workbook_review.py`; its current top-3 results are in
@@ -117,9 +116,16 @@ To evaluate the actual API ranker, run
 direct-support labels is in `reports/retrieval_workbook_label_audit_v1.md`.
 That audit found both page-level labels defensible, while one selected quote
 needs a better supporting sentence and the other target page is still missed
-by the API top three. The API-aligned V:G sensitivity sweep slightly favors
+by the API top three. The question-level coach-review coverage audit is in
+`reports/coach_review_answer_coverage_audit_v1.md`: 22/42 API top-three lists
+include a direct-rated page, 13 miss a direct-rated page available in the
+reviewed pool, and 7 have no direct-rated page in that pool. The answer
+composer now checks a wider candidate pool before answering and requires
+stronger topic, role, and action matches. Non-regain answers use up to three
+source sentences with citations; they are not paraphrased. These changes are
+local experiments and have not been evaluated yet. The API-aligned V:G sensitivity sweep slightly favors
 BM25-only on P@3, recall, and nDCG while tying MRR; it is not promoted because
-the workbook labels are provisional and were reused for selection.
+the coach-reviewed workbook labels cover a retrieval-generated candidate pool and were reused for selection.
 
 An exploratory 128-setting BM25/graph sweep is available in
 `scripts/tune_retrieval_on_workbook.py`; results are in
@@ -156,20 +162,18 @@ Recall@5 0.321 vs 0.619; MRR 0.259 vs 0.612). The 25%-dense hybrid is close to
 BM25, while the current BM25+graph configuration remains slightly higher on
 these provisional labels. No production configuration was changed. The
 embedding runtime is pinned in the optional `requirements-embedding.txt`; the
-cached MiniLM revision is recorded in the comparison report. Complete human
-review before making a retrieval-quality claim or promoting a setting. Do not
+cached MiniLM revision is recorded in the comparison report. Expand the reviewed candidate pool and assess generated-answer quality before making a retrieval-quality claim or promoting a setting. Do not
 tune on v1/v2 held-out sets.
 
 The user-provided `retrieval_review_v1.xlsx` has now been used as a separate
 prototype label input. It is unchanged and remains outside the repository. Its
-two reviewer profiles are scripted, so the results are not human or coach
+two reviewers are independent human coaches, so the results are coach-reviewed, but
 review and do not establish reviewer reliability. A compact export with IDs,
 grades, and provenance (no page text or excerpts) is in
 `reports/retrieval_workbook_review_qrels_v1.csv`; the separate rescoring and
 per-question results are in `reports/retrieval_workbook_review_evaluation_v1.md`
 and `.csv`. The workbook-based evaluation reports direct support, partial
-support, graded nDCG, and how much of each retrieved top five was judged. Treat
-it as a prototype diagnostic; production settings remain unchanged. The import
+support, graded nDCG, and how much of each retrieved top five was judged. Treat it as a coach-reviewed candidate-pool diagnostic; production settings remain unchanged pending broader coverage and answer-level review. The import
 and rescore commands are documented in
 `reports/retrieval_human_review_protocol.md`.
 

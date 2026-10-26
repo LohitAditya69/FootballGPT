@@ -11,7 +11,9 @@ from typing import Any
 
 from backend.api.answer_composer import (
     GENERIC_ABSTENTION_NOTICE,
+    _source_sentences,
     compose_grounded_answer,
+    is_clean_tactical_sentence,
     select_direct_passages,
 )
 from backend.api.config import Settings, settings
@@ -37,54 +39,24 @@ logger = logging.getLogger(__name__)
 
 
 def _extract_excerpt(text: str, query: str | None = None) -> str:
-    """Choose a relevant literal sentence, without whitespace or wording rewrites."""
-    sentences = []
-    for match in re.finditer(r".+?(?:[.!?](?=\s|$)|$)", text, re.S):
-        excerpt = match.group(0).strip()
-        if excerpt:
-            sentences.append(excerpt)
+    """Return up to three query-matched source sentences, excluding headings."""
+    sentences = [sentence for sentence in _source_sentences(text) if is_clean_tactical_sentence(sentence)]
     if not sentences:
         return text.strip()
     if query:
-        from backend.retrieval.vector_retriever import tokenize
+        from backend.api.answer_composer import _normalized_terms
 
-        query_terms = {term for term in tokenize(query) if "_" not in term}
+        query_terms = _normalized_terms(query)
         if query_terms:
-            sentence_terms = [
-                {term for term in tokenize(sentence) if "_" not in term}
-                for sentence in sentences
+            scored = [
+                (len(query_terms & _normalized_terms(sentence)), index, sentence)
+                for index, sentence in enumerate(sentences)
             ]
-            best = max(range(len(sentences)), key=lambda i: len(query_terms & sentence_terms[i]))
-            if query_terms & sentence_terms[best]:
-                return sentences[best]
+            matched = [item for item in scored if item[0] > 0]
+            if matched:
+                chosen = sorted(sorted(matched, key=lambda item: (-item[0], item[1]))[:3], key=lambda item: item[1])
+                return "\n".join(sentence for _, _, sentence in chosen)
     return sentences[0]
-
-
-def _deduplicate_ranked_passages(
-    candidates: list[tuple[float, dict[str, Any]]], limit: int,
-) -> list[dict[str, Any]]:
-    """Keep the best passage per cited page and drop near-identical text."""
-    if limit < 1:
-        raise ValueError("limit must be positive")
-    selected: list[dict[str, Any]] = []
-    seen_pages: set[tuple[str, int]] = set()
-    selected_tokens: list[set[str]] = []
-    for _, candidate in candidates:
-        page_key = (str(candidate["source_id"]), int(candidate["page"]))
-        if page_key in seen_pages:
-            continue
-        tokens = set(re.findall(r"[a-z0-9]+", candidate.get("excerpt", "").casefold()))
-        if len(tokens) >= 20 and any(
-            len(tokens & prior) / min(len(tokens), len(prior)) >= 0.9
-            for prior in selected_tokens if len(prior) >= 20
-        ):
-            continue
-        seen_pages.add(page_key)
-        selected_tokens.append(tokens)
-        selected.append(candidate)
-        if len(selected) >= limit:
-            break
-    return selected
 
 
 class TacticalService:
@@ -315,104 +287,49 @@ class TacticalService:
         v_rows = [r for r in v_raw_rows if is_tactical_chunk(r)]
         g_rows = [r for r in g_rows if is_tactical_chunk(r)]
 
-        # Extract content unigrams from question for term overlap check
-        from backend.retrieval.vector_retriever import tokenize
-        q_unigrams = set(t for t in tokenize(question) if "_" not in t)
+        # 3. Retrieve and validate candidate evidence before deciding whether to abstain.
+        # A lexical top-hit threshold can hide a directly relevant passage ranked
+        # below a keyword-heavy result, so answer support is decided by the
+        # sentence-level topic/role/action check over the wider candidate pool.
+        status = "answered"
+        support_status = "conditional"
+        answer_mode = "extractive_evidence_brief"
+        answer = ""
 
-        top_v_score = v_rows[0]["vector_score"] if v_rows else 0.0
-        has_adequate_graph = any(
-            float(row.get("graph_score", 0.0)) >= self.cfg.min_graph_score_threshold
-            for row in g_rows
+        v_norm = normalize_channel(v_rows, "vector_score")
+        g_norm = normalize_channel(g_rows, "graph_score")
+        combined_candidates: list[tuple[float, dict[str, Any]]] = []
+        for eid in set(v_norm) | set(g_norm):
+            cand = next((r for r in v_rows if r["evidence_id"] == eid), None) or next(
+                (r for r in g_rows if r["evidence_id"] == eid), None
+            )
+            if not cand:
+                continue
+            valid_dict = self.validate_chunk(cand, question)
+            if not valid_dict:
+                continue
+            fused_score = (
+                self.tactical_weights["V"] * v_norm.get(eid, 0.0)
+                + self.tactical_weights["G"] * g_norm.get(eid, 0.0)
+            )
+            combined_candidates.append((fused_score, {**valid_dict, "score": round(fused_score, 4)}))
+
+        combined_candidates.sort(key=lambda item: (-item[0], item[1]["evidence_id"]))
+        candidate_passages = [
+            TacticalPassage(**candidate)
+            for _, candidate in combined_candidates[:pool_size]
+        ]
+        tactical_passages = select_direct_passages(
+            candidate_passages, question, self.fixed_chunks
         )
-
-        matched_unigram_count = 0
-        term_overlap_ratio = 0.0
-        if v_rows and q_unigrams:
-            top_cand_tokens = set(tokenize(v_rows[0].get("text", "")))
-            matched_unigrams = [t for t in q_unigrams if t in top_cand_tokens]
-            matched_unigram_count = len(matched_unigrams)
-            term_overlap_ratio = matched_unigram_count / len(q_unigrams)
-
-        has_adequate_lexical = (
-            bool(v_rows)
-            and top_v_score >= 10.0
-            and matched_unigram_count >= 2
-            and term_overlap_ratio >= 0.25
-        )
-
-        # Graph aliases can be broad (for example, "possession" or
-        # "finishing"). They may improve ordering, but a concept match alone
-        # is not sufficient evidence that the retrieved page answers the
-        # question. Require lexical grounding before returning passages.
-        has_adequate_support = has_adequate_lexical
-
-        # 3. Determine abstention vs answered
-        if not has_adequate_support:
-            # Retrieval failure cannot prove that the frozen source set does not
-            # cover a topic; reserve "not_covered" for independently curated labels.
-            support_status = "unknown"
-            answer_mode = "abstain"
+        if not tactical_passages:
             status = "abstained"
-            answer = (
-                "No adequately supported tactical passage was retrieved from the frozen UEFA reference set; "
-                "abstain pending source review."
-            )
+            answer_mode = "abstain"
+            support_status = "unknown"
+            answer = GENERIC_ABSTENTION_NOTICE
             limitations.append(
-                "No adequately supported passage was found in the frozen UEFA corpus for this query; abstention returned."
+                "The ranked candidate pool contained no clean sentence with a specific topic, role, and action match; abstention returned."
             )
-            if has_adequate_graph and not has_adequate_lexical:
-                limitations.append(
-                    "Graph concept matches were present, but lacked sufficient lexical grounding to establish page support."
-                )
-            tactical_passages: list[TacticalPassage] = []
-        else:
-            status = "answered"
-            support_status = "conditional"
-            answer_mode = "extractive_evidence_brief"
-            answer = ""
-
-            # Combine candidates deterministically
-            v_norm = normalize_channel(v_rows, "vector_score")
-            g_norm = normalize_channel(g_rows, "graph_score")
-
-            # Fusion with 0.70 V and 0.30 G for tactical passages
-            combined_candidates: list[tuple[float, dict[str, Any]]] = []
-            for eid in set(v_norm) | set(g_norm):
-                cand = next((r for r in v_rows if r["evidence_id"] == eid), None) or next(
-                    (r for r in g_rows if r["evidence_id"] == eid), None
-                )
-                if not cand:
-                    continue
-                valid_dict = self.validate_chunk(cand, question)
-                if not valid_dict:
-                    continue
-                fused_score = (
-                    self.tactical_weights["V"] * v_norm.get(eid, 0.0)
-                    + self.tactical_weights["G"] * g_norm.get(eid, 0.0)
-                )
-                combined_candidates.append((fused_score, {**valid_dict, "score": round(fused_score, 4)}))
-
-            combined_candidates.sort(key=lambda item: (-item[0], item[1]["evidence_id"]))
-            distinct_candidates = _deduplicate_ranked_passages(
-                combined_candidates, self.cfg.top_k_tactical
-            )
-            tactical_passages = [TacticalPassage(**candidate) for candidate in distinct_candidates]
-            # Retrieval rank only proposes candidates. Return/answer from a passage
-            # only when its actual excerpt contains a directly responsive sentence.
-            tactical_passages = select_direct_passages(
-                tactical_passages, question, self.fixed_chunks
-            )
-            if not tactical_passages:
-                status = "abstained"
-                answer_mode = "abstain"
-                support_status = "unknown"
-                answer = (
-                    "No adequately supported tactical passage was retrieved from the frozen UEFA reference set; "
-                    "abstain pending source review."
-                )
-                limitations.append(
-                    "Retrieved passages did not contain a clean, directly responsive source sentence; abstention returned."
-                )
 
         # 4. Historical retrieval (strictly conditioned on grounded event + match exclusion OR question-derived search)
         historical_examples: list[HistoricalExample] = []
@@ -522,8 +439,8 @@ class TacticalService:
                 events=window.get("events", []),
             )
 
-        # 6. Paraphrase only the deterministic Lap 11 claim set when a provider is
-        # configured; every failure returns to the same deterministic composer.
+        # 6. Paraphrase only claim types with an explicit validator; every failure
+        # returns to the deterministic evidence composer.
         if status == "answered" and tactical_passages:
             answer = None
             provider_configured = False
@@ -569,7 +486,7 @@ class TacticalService:
                 support_status = "unknown"
                 answer_mode = "abstain"
                 tactical_passages = []
-                limitations.append("No recognized deterministic evidence-to-claim mapping was available; abstention returned.")
+                limitations.append("No directly responsive source claim was available; abstention returned.")
 
         # 7. Build Provenance Trace
         qid = req_id

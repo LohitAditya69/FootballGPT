@@ -1,8 +1,8 @@
-# Retrieval evaluation using prototype workbook judgments
+# Retrieval evaluation using independent coach-reviewed judgments
 
 ## Scope and provenance
 
-This rescored the existing top-five development rankings for 42 questions against 1,071 page judgments exported from the user's review workbook. The workbook was not modified. It contains two scripted reviewer profiles (1A and 1B), not independent human or coach judgments; all results below are prototype-only and must not be reported as human-reviewed reliability.
+This rescored the existing top-five development rankings for 42 questions against 1,071 page judgments exported from the user's review workbook. The workbook was not modified. Reviewers 1A and 1B are independent human coaches, as confirmed by the user. The adjudicated labels are coach-reviewed page relevance judgments. The candidate pool was generated from retrieval and is non-exhaustive, so these results are not an exhaustive corpus evaluation or proof of factual correctness.
 
 Adjudicated labels: 134 direct (grade 2), 735 partial (grade 1), 0 not relevant (grade 0), and 202 uncertain. Uncertain pages are excluded from graded gains and relevance denominators. The workbook's candidate pages are not exhaustive; unjudged pages in a returned top five count as misses in precision and are exposed via Judged@5, so these scores are conservative and candidate-pool dependent.
 
@@ -46,6 +46,6 @@ Better / tied / worse by question, under the strict direct-support view:
 
 ## Interpretation and next action
 
-These results show how the current prototype rankings align with this workbook's labels; they do not establish factual correctness, coach agreement, or general retrieval quality. The reviewer IDs and backgrounds in the workbook describe scripted profiles, and the labels were generated from a candidate pool that included retrieved pages. Treat small differences as diagnostic only. Keep production retrieval settings unchanged pending an actual independent human review with candidate-pool expansion and adjudication.
+These results show how current rankings align with independent coach judgments on the reviewed candidate pages; they do not establish factual correctness or exhaustive corpus recall. The candidate pool included retrieval-suggested pages and may omit relevant pages. Exact agreement was 937/1,071 (87.5%), including 202 pairs both marked uncertain; among the 869 pairs where both reviewers gave a categorical grade, exact agreement was 735/869 (84.6%). These are raw exact-agreement rates, not chance-corrected reliability statistics. Treat small differences as diagnostic only. Improve candidate-pool coverage and evaluate generated answers separately before changing serving behavior.
 
 The prior AI-qrel comparison is preserved in `dense_retrieval_development_comparison.md`. This report is an additional workbook-label view, not a replacement for that baseline or a held-out evaluation. Per-question details and judged coverage are in `retrieval_workbook_review_evaluation_v1.csv`.

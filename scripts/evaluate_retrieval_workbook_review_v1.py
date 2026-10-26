@@ -147,11 +147,11 @@ def main() -> int:
         rater2[row["reviewer2_id"]] += 1
 
     lines = [
-        "# Retrieval evaluation using prototype workbook judgments",
+        "# Retrieval evaluation using coach-reviewed workbook judgments",
         "",
         "## Scope and provenance",
         "",
-        f"This rescored the existing top-five development rankings for {len(qrels)} questions against {sum(map(len, qrels.values())):,} page judgments exported from the user's review workbook. The workbook was not modified. It contains two scripted reviewer profiles ({', '.join(sorted(rater1))} and {', '.join(sorted(rater2))}), not independent human or coach judgments; all results below are prototype-only and must not be reported as human-reviewed reliability.",
+        f"This rescored the existing top-five development rankings for {len(qrels)} questions against {sum(map(len, qrels.values())):,} page judgments exported from the user's review workbook. The workbook was not modified. Reviewers {', '.join(sorted(rater1))} and {', '.join(sorted(rater2))} are independent human coaches, as confirmed by the user. These are coach-reviewed page judgments over a retrieval-generated, non-exhaustive candidate pool; they are not exhaustive corpus metrics or proof of factual correctness.",
         "",
         f"Adjudicated labels: {grade_counts['2']} direct (grade 2), {grade_counts['1']} partial (grade 1), {grade_counts['0']} not relevant (grade 0), and {grade_counts['uncertain']} uncertain. Uncertain pages are excluded from graded gains and relevance denominators. The workbook's candidate pages are not exhaustive; unjudged pages in a returned top five count as misses in precision and are exposed via Judged@5, so these scores are conservative and candidate-pool dependent.",
         "",
@@ -181,7 +181,7 @@ def main() -> int:
         "",
         "## Interpretation and next action",
         "",
-        "These results show how the current prototype rankings align with this workbook's labels; they do not establish factual correctness, coach agreement, or general retrieval quality. The reviewer IDs and backgrounds in the workbook describe scripted profiles, and the labels were generated from a candidate pool that included retrieved pages. Treat small differences as diagnostic only. Keep production retrieval settings unchanged pending an actual independent human review with candidate-pool expansion and adjudication.",
+        "These results show how the current prototype rankings align with this workbook's labels; they do not establish factual correctness, coach agreement, or general retrieval quality. The labels cover a candidate pool that included retrieved pages and may omit relevant pages. Treat small metric differences as diagnostic only; improve candidate-pool coverage and evaluate generated answers separately before changing serving behavior.",
         "",
         "The prior AI-qrel comparison is preserved in `dense_retrieval_development_comparison.md`. This report is an additional workbook-label view, not a replacement for that baseline or a held-out evaluation. Per-question details and judged coverage are in `retrieval_workbook_review_evaluation_v1.csv`.",
         "",

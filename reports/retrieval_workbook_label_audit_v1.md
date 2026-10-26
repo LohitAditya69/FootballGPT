@@ -43,7 +43,7 @@ ranking issue, not evidence that the qrel should be downgraded.
 ## Limits and next review action
 
 These two checks support the labels but do not validate the remaining workbook
-rows. The two scripted workbook reviewer profiles remain provisional labels.
+rows. The two independent human coach reviewers supplied the workbook judgments; the retrieval-generated candidate pool remains non-exhaustive.
 The next label-quality step is a human/coach pass over the review packet,
 including confirming the supporting excerpt and adding any relevant pages the
 retrievers missed. Do not treat this spot audit as independent human review.

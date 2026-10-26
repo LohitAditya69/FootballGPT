@@ -33,18 +33,18 @@ held-out questions were not used to retune.
 Detailed output: `retrieval_v2_heldout_evaluation.md` and
 `retrieval_v2_heldout_per_question.csv`.
 
-### Development comparison and prototype workbook labels
+### Development comparison and coach-reviewed workbook labels
 
 The 42-question dense/BM25/graph comparison was regenerated from the current
 retriever implementation. On the existing AI-assisted qrels, fixed BM25 scored
 0.171/0.619/0.612 for P@5/Recall@5/MRR; current BM25+G scored
 0.181/0.655/0.632; dense-only scored 0.081/0.321/0.259. The workbook-derived
-prototype rescoring was then refreshed. On its scripted labels, current
+prototype rescoring was then refreshed. On its coach-reviewed candidate-page labels, current
 BM25+G scored direct-support P@5 0.352, Recall@5 0.542, MRR 0.617, and nDCG@5
 0.801; fixed BM25 scored 0.324/0.503/0.629/0.788. BM25+G is higher on
 precision, recall, and nDCG, while fixed BM25 is higher on MRR.
 
-Both development views are provisional. The workbook uses scripted reviewer
+Both development views are limited by candidate-pool coverage. The workbook uses independent human coach reviewers
 profiles, and its candidate pages were drawn from retrieval outputs. Neither
 view establishes independent human/coach judgment or complete qrels. Keep the
 production retrieval configuration unchanged.

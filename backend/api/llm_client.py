@@ -86,7 +86,7 @@ def build_evidence_prompt(
     historical_examples: list[HistoricalExample] | None = None,
     fixed_chunks: dict[str, dict[str, Any]] | None = None,
 ) -> str:
-    """Provide only the question and Lap 11's deterministic claim-to-citation set."""
+    """Provide only the question and deterministic claim-to-citation set."""
     del event_evidence, historical_examples
     claims = _approved_claims(question, passages, fixed_chunks)
     payload = {
@@ -213,7 +213,7 @@ def validate_llm_output(
     question: str | None = None,
     fixed_chunks: dict[str, dict[str, Any]] | None = None,
 ) -> tuple[bool, str]:
-    """Validate structured paraphrases against Lap 11's exact claim/citation mapping."""
+    """Validate structured paraphrases against the supported claim/citation mapping."""
     if not generated_text or len(generated_text) > 6000:
         return False, "Generated output is empty or exceeds the length bound"
     if not question:
@@ -278,6 +278,8 @@ class LLMClient:
         claims = _approved_claims(question, passages, fixed_chunks)
         if not claims:
             return LLMResult(None, False, self.provider, self.model, "No approved claims available", True)
+        if any(_claim_kind(claim) is None for claim in claims):
+            return LLMResult(None, False, self.provider, self.model, "No paraphrase validator is available for this evidence type", True)
         if not self.is_configured():
             return LLMResult(None, False, self.provider, self.model, "LLM provider is disabled", True)
         prompt = build_evidence_prompt(

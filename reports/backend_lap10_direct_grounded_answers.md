@@ -62,7 +62,7 @@ Do not edit `frontend/**`, retrieval/indexing code or data, historical scoring, 
 ## Evaluation and checks
 
 - Have reviewers judge answer relevance, factual support, citation entailment, readability, and abstention separately. Retrieval rank and citation membership alone do not prove entailment.
-- Use the prototype workbook only as provisional review input; its scripted profiles are not independent human or coach judgments.
+- Use the coach-reviewed workbook as page-relevance evidence; its retrieval-generated candidate pool remains non-exhaustive and does not assess generated-answer quality.
 - Keep the v1/v2 held-out sets frozen. Use the development set for iteration; report final held-out results only after configuration is frozen and without retuning afterward.
 - Record representative before/after answers for the screenshot question, with each answer claim mapped to its source/page. Do not paste unnecessary report text into this report.
 - Run all backend API/composer/LLM tests and the local service verification appropriate to the current environment. Record exact commands and outcomes.
@@ -84,3 +84,14 @@ Do not edit `frontend/**`, retrieval/indexing code or data, historical scoring, 
 
 - [ ] Not started.
 - Implementation notes/results: pending.
+
+
+## General tactical evidence path
+
+For question types without a deterministic coaching-language mapping, the
+composer now returns up to three directly responsive source sentences verbatim,
+each with its own citation. This improves coverage beyond the regain templates
+without introducing unsupported paraphrase. The existing responsiveness filter
+is lexical and the reviewed retrieval pool is incomplete, so the new path still
+needs answer-level coach review. The optional LLM path does not paraphrase claim
+types without a matching validator.
